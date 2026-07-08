@@ -1,0 +1,20 @@
+{
+  "name": "@tk-workflow/nodes",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TK AI Video Pipeline — 工作流节点库",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@tk-workflow/types": "*",
+    "@tk-workflow/core": "*",
+    "@tk-workflow/providers": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@tk-workflow/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TK AI Video Pipeline CLI",
+  "main": "dist/index.js",
+  "bin": {
+    "tk-workflow": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@tk-workflow/types": "*",
+    "@tk-workflow/core": "*",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}

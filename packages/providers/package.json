@@ -1,0 +1,19 @@
+{
+  "name": "@tk-workflow/providers",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Provider 抽象层 — 统一接口调用各类 AI 模型",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@tk-workflow/types": "*",
+    "openai": "^4.50.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "tk-workflow-cc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TK AI Video Pipeline — 自动抓取TK视频 → AI多模态分析 → AI视频生成",
+  "scripts": {
+    "build": "npm run build:types && npm run build:core && npm run build:providers && npm run build:nodes && npm run build:server && npm run build:cli && npm run build:web",
+    "build:cli": "npm run build -w @tk-workflow/cli",
+    "build:types": "npm run build -w @tk-workflow/types",
+    "build:core": "npm run build -w @tk-workflow/core",
+    "build:providers": "npm run build -w @tk-workflow/providers",
+    "build:nodes": "npm run build -w @tk-workflow/nodes",
+    "dev:server": "npm run dev -w @tk-workflow/server",
+    "dev:web": "npm run dev -w @tk-workflow/web",
+    "dev:cli": "npm run dev -w @tk-workflow/cli",
+    "build:server": "npm run build -w @tk-workflow/server",
+    "build:web": "npm run build -w @tk-workflow/web",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "setup:db": "ts-node scripts/setup-db.ts"
+  },
+  "workspaces": [
+    "packages/types",
+    "packages/core",
+    "packages/providers",
+    "packages/nodes",
+    "apps/server",
+    "apps/web",
+    "apps/cli"
+  ],
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.14.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
