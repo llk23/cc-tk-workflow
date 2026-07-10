@@ -23,6 +23,7 @@ export class WorkflowController {
 
   @Post(':id/execute')
   async execute(@Param('id') id: string) {
+    // Phase 3：入队 BullMQ，由 Worker 真实驱动引擎并推送进度
     return this.workflowService.execute(id);
   }
 

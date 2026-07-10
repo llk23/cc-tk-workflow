@@ -23,6 +23,38 @@ services:
       - sqlserver-data:/var/opt/mssql
     restart: unless-stopped
 
+  # ========== Phase 3 架构级补全：对象存储 ==========
+  # MinIO：S3 兼容，存原始/生成视频、音频、抽帧图等大文件
+  minio:
+    image: minio/minio:latest
+    container_name: tk-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - '9000:9000'   # API
+      - '9001:9001'   # 控制台
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+  # MongoDB：存结构化分析报告(嵌套 JSON)，如 visual/pacing/script/bgm/viral_elements/generation_prompt
+  mongodb:
+    image: mongo:7
+    container_name: tk-mongodb
+    ports:
+      - '27017:27017'
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=mongoadmin
+      - MONGO_INITDB_ROOT_PASSWORD=mongoadmin
+      - MONGO_INITDB_DATABASE=tk_workflow
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
 volumes:
   redis-data:
   sqlserver-data:
+  minio-data:
+  mongo-data:

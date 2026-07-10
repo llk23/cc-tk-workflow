@@ -4,7 +4,9 @@ import {
   ExecutionStatusEnum,
   ExecutionContext,
   NodeResult,
+  WorkflowNode,
 } from '@tk-workflow/types';
+import { randomUUID } from 'crypto';
 import { WorkflowGraph } from '../graph/workflow-graph';
 import { NodeExecutor } from './executor';
 import { ContextStore } from '../storage/context-store';
@@ -35,7 +37,14 @@ export class PipelineEngine {
    * 执行整个 Pipeline
    * 按拓扑排序依次执行节点
    */
-  async execute(workflow: Workflow, initialConfig?: Record<string, unknown>): Promise<PipelineExecution> {
+  async execute(
+    workflow: Workflow,
+    initialConfig?: Record<string, unknown>,
+    hooks?: {
+      onNodeStart?: (node: WorkflowNode) => void | Promise<void>;
+      onNodeComplete?: (result: NodeResult) => void | Promise<void>;
+    },
+  ): Promise<PipelineExecution> {
     this.loadWorkflow(workflow);
 
     const execution: PipelineExecution = {
@@ -66,8 +75,12 @@ export class PipelineEngine {
         const node = sortedNodes[i];
         const nodeInput = this.collectNodeInput(node.id, execution.context);
 
+        await hooks?.onNodeStart?.(node);
+
         // 执行节点
         const result: NodeResult = await this.executor.executeNode(node, nodeInput);
+
+        await hooks?.onNodeComplete?.(result);
 
         // 保存节点执行结果
         execution.context.nodeResults[node.id] = result;
@@ -137,7 +150,6 @@ export class PipelineEngine {
   }
 
   private generateId(): string {
-    const { v4: uuidv4 } = require('uuid');
-    return uuidv4();
+    return randomUUID();
   }
 }

@@ -10,13 +10,12 @@
       </div>
     </nav>
     <main class="main-content">
-      <Dashboard />
+      <router-view />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import Dashboard from './views/Dashboard.vue'
 </script>
 
 <style>
