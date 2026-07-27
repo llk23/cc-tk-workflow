@@ -22,6 +22,11 @@ export class ExecutionEntity {
   @Column('simple-json', { nullable: true })
   context?: Record<string, unknown>;
 
+  /** 工作流最终结果（通常为输出节点的输出），JSON，可空。
+   *  由 Worker 在 OUTPUT 节点完成后写入，供前端「结果」面板直接读取。 */
+  @Column('simple-json', { nullable: true })
+  result?: Record<string, unknown>;
+
   @Column({ type: 'varchar', length: 1024, nullable: true })
   error?: string;
 

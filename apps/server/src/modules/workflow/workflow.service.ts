@@ -1,14 +1,23 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Workflow, WorkflowStatusEnum } from '@tk-workflow/types';
+import { Workflow, WorkflowStatusEnum, NodeTypeEnum } from '@tk-workflow/types';
+import {
+  FetchTKVideoNode,
+  TikTokAccountVerifyNode,
+  ModelConfigNode,
+  AIAnalyzeVideoNode,
+  VideoGenerateNode,
+  TransformNode,
+  ConditionNode,
+  OutputNode,
+  type NodeExecutionContext,
+  type BaseNode,
+} from '@tk-workflow/nodes';
 import { WorkflowEntity } from './entities/workflow.entity';
 import { ExecutionEntity } from './entities/execution.entity';
-import { AnalysisReport, AnalysisReportDocument } from './schemas/analysis-report.schema';
 
 /**
  * 工作流服务（Phase 3 落库版）
@@ -23,8 +32,6 @@ export class WorkflowService {
     private readonly workflowRepo: Repository<WorkflowEntity>,
     @InjectRepository(ExecutionEntity)
     private readonly executionRepo: Repository<ExecutionEntity>,
-    @InjectModel(AnalysisReport.name)
-    private readonly analysisReportModel: Model<AnalysisReportDocument>,
     @InjectQueue('workflow') private readonly workflowQueue: Queue,
   ) {}
 
@@ -53,6 +60,21 @@ export class WorkflowService {
   async findOne(id: string): Promise<Workflow | null> {
     const entity = await this.workflowRepo.findOne({ where: { id } });
     return entity ? this.toWorkflow(entity) : null;
+  }
+
+  async update(id: string, patch: Partial<Workflow>): Promise<Workflow> {
+    const existing = await this.workflowRepo.findOne({ where: { id } });
+    if (!existing) throw new Error('Workflow not found: ' + id);
+    this.workflowRepo.merge(existing, {
+      name: patch.name ?? existing.name,
+      description: patch.description ?? existing.description,
+      status: (patch.status as string) ?? existing.status,
+      trigger: (patch.trigger as unknown as Record<string, unknown>) ?? existing.trigger,
+      nodes: (patch.nodes as unknown[]) ?? existing.nodes,
+      edges: (patch.edges as unknown[]) ?? existing.edges,
+    });
+    const saved = await this.workflowRepo.save(existing);
+    return this.toWorkflow(saved);
   }
 
   private toWorkflow(e: WorkflowEntity): Workflow {
@@ -104,7 +126,9 @@ export class WorkflowService {
 
   async updateExecution(
     id: string,
-    patch: Partial<Pick<ExecutionEntity, 'status' | 'progress' | 'context' | 'error' | 'completedAt'>>,
+    patch: Partial<
+      Pick<ExecutionEntity, 'status' | 'progress' | 'context' | 'error' | 'completedAt' | 'result'>
+    >,
   ): Promise<void> {
     await this.executionRepo.update(id, patch as any);
   }
@@ -113,9 +137,169 @@ export class WorkflowService {
     return this.executionRepo.find({ where: { workflowId }, order: { startedAt: 'DESC' } });
   }
 
-  // ---------- 分析报告（MongoDB，供 Phase 5 使用） ----------
+  // ---------- 保存某次分析结果的编辑 ----------
+  async updateAnalysisPrompt(
+    workflowId: string,
+    execId: string,
+    nodeId: string,
+    videoIdx: number,
+    prompt: string,
+  ): Promise<{ ok: boolean }> {
+    const exec = await this.executionRepo.findOne({ where: { id: execId, workflowId } });
+    if (!exec) throw new Error('Execution not found');
 
-  async saveAnalysisReport(report: Partial<AnalysisReport>): Promise<void> {
-    await this.analysisReportModel.create(report);
+    const result = (exec.result || {}) as Record<string, any>;
+    const nodeOutput = result[nodeId];
+    if (!nodeOutput?.analyses?.[videoIdx]) throw new Error('Analysis not found');
+
+    // 更新该视频分析的 rawOutput 中的 generationPrompt
+    const analysis = nodeOutput.analyses[videoIdx];
+    if (analysis.rawOutput) {
+      try {
+        const parsed = JSON.parse(analysis.rawOutput);
+        if (!parsed.replication) parsed.replication = {};
+        parsed.replication.generationPrompt = prompt;
+        analysis.rawOutput = JSON.stringify(parsed);
+      } catch {
+        analysis.rawOutput = prompt;
+      }
+    }
+
+    await this.executionRepo.update(execId, { result });
+    return { ok: true };
+  }
+
+  // ---------- 删除：工作流定义 + 其所有执行记录 ----------
+  async remove(id: string): Promise<void> {
+    await this.executionRepo.delete({ workflowId: id });
+    await this.workflowRepo.delete(id);
+  }
+
+  // ---------- 单节点隔离调试（先跑上游节点，再跑目标节点） ----------
+  async debugNode(
+    workflowId: string,
+    nodeId: string,
+  ): Promise<{ nodeId: string; type: string; output: unknown; logs: string[] }> {
+    const workflow = await this.findOne(workflowId);
+    if (!workflow) throw new Error('Workflow not found');
+    const raw = (workflow.nodes || []).find((n) => n.id === nodeId);
+    if (!raw) throw new Error('Node not found: ' + nodeId);
+
+    const logs: string[] = [];
+    const ctx: NodeExecutionContext = {
+      pipelineId: 'debug',
+      node: raw as any,
+      logger: (m: string) => logs.push(m),
+      onProgress: (p: number) => logs.push(`进度 ${p}%`),
+    };
+
+    // 先跑上游节点，将输出作为本节点的输入
+    const upstreamLogger = (m: string) => logs.push(m);
+    const input = await this.executeUpstreamNodes(workflow, nodeId, upstreamLogger);
+
+    const inst = this.createNodeInstance(raw.type);
+    if (!inst) throw new Error('No handler for node type: ' + raw.type);
+
+    const output = await inst.execute(raw.config || {}, input, ctx);
+
+    // 将调试结果保存到执行历史，供前端历史面板读取
+    try {
+      const execId = 'debug_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      await this.executionRepo.save({
+        id: execId,
+        workflowId,
+        status: 'completed',
+        result: { [nodeId]: output },
+        startedAt: new Date(),
+        completedAt: new Date(),
+        progress: 100,
+      });
+    } catch { /* 历史记录保存失败不影响调试主流程 */ }
+
+    return { nodeId, type: raw.type, output, logs };
+  }
+
+  /** 递归执行上游节点，收集输出作为下游节点的 input */
+  private async executeUpstreamNodes(
+    workflow: Workflow,
+    nodeId: string,
+    log: (msg: string) => void,
+  ): Promise<any> {
+    const edges = (workflow.edges || []).filter((e) => e.target === nodeId);
+    if (edges.length === 0) return undefined;
+
+    // 收集所有上游节点的输出
+    const upstreamOutputs: Record<string, any> = {};
+    for (const edge of edges) {
+      const upstreamNode = (workflow.nodes || []).find((n) => n.id === edge.source);
+      if (!upstreamNode) continue;
+
+      // 递归执行上游节点的上游（处理链式连接）
+      const upstreamInput = await this.executeUpstreamNodes(workflow, upstreamNode.id, log);
+
+      const inst = this.createNodeInstance(upstreamNode.type);
+      if (!inst) {
+        log(`  [上游] ${upstreamNode.label || upstreamNode.type}: 无处理器，跳过`);
+        continue;
+      }
+
+      log(`[上游] ${upstreamNode.label || upstreamNode.type}: 执行`);
+      const nodeCtx: NodeExecutionContext = {
+        pipelineId: 'debug',
+        node: upstreamNode as any,
+        logger: (m) => log(`  [${upstreamNode.label || upstreamNode.type}] ${m}`),
+        onProgress: (p) => log(`  [${upstreamNode.label || upstreamNode.type}] 进度 ${p}%`),
+      };
+      const result = await inst.execute(upstreamNode.config || {}, upstreamInput, nodeCtx);
+
+      if (result && typeof result === 'object') {
+        // 特殊处理：模型配置节点的输出包装为 modelConfig
+        if (upstreamNode.type === 'model-config') {
+          upstreamOutputs.modelConfig = result;
+        } else {
+          // 其他节点：按 source id 存入，下游可通过视频数据遍历
+          upstreamOutputs[edge.source] = result;
+        }
+      }
+    }
+
+    // 单上游：直接返回其输出；多上游：合并后返回
+    const keys = Object.keys(upstreamOutputs);
+    if (keys.length === 0) return undefined;
+    if (keys.length === 1) return upstreamOutputs[keys[0]];
+    // 多上游合并：拆解每个上游的输出平铺到根（避免嵌套在 nodeId 下）
+    const merged: Record<string, any> = {};
+    for (const [key, output] of Object.entries(upstreamOutputs)) {
+      if (output && typeof output === 'object' && !Array.isArray(output)) {
+        Object.assign(merged, output);
+      } else {
+        merged[key] = output;
+      }
+    }
+    return merged;
+  }
+
+  /** 按节点类型实例化节点（用于隔离调试） */
+  private createNodeInstance(type: string): BaseNode | null {
+    switch (type) {
+      case NodeTypeEnum.FETCH_TK:
+        return new FetchTKVideoNode();
+      case NodeTypeEnum.TK_ACCOUNT_VERIFY:
+        return new TikTokAccountVerifyNode();
+      case NodeTypeEnum.MODEL_CONFIG:
+        return new ModelConfigNode();
+      case NodeTypeEnum.AI_ANALYZE:
+        return new AIAnalyzeVideoNode();
+      case NodeTypeEnum.VIDEO_GENERATE:
+        return new VideoGenerateNode();
+      case NodeTypeEnum.TRANSFORM:
+        return new TransformNode();
+      case NodeTypeEnum.CONDITION:
+        return new ConditionNode();
+      case NodeTypeEnum.OUTPUT:
+        return new OutputNode();
+      default:
+        return null;
+    }
   }
 }

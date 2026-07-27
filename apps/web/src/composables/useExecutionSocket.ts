@@ -6,7 +6,7 @@ const WS_URL = (import.meta.env.VITE_WS_URL as string) || 'http://localhost:3000
 let socket: Socket | null = null
 
 export interface ExecutionEvent {
-  type: 'queued' | 'node:start' | 'node:success' | 'node:failed' | 'completed' | 'failed'
+  type: 'queued' | 'node:start' | 'node:success' | 'node:failed' | 'completed' | 'failed' | 'result'
   nodeId?: string
   message?: string
 }

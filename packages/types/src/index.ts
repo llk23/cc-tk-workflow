@@ -46,6 +46,8 @@ export interface TriggerConfig {
 /** 节点类型枚举 */
 export enum NodeTypeEnum {
   FETCH_TK = 'fetch-tk',
+  TK_ACCOUNT_VERIFY = 'tk-account-verify',
+  MODEL_CONFIG = 'model-config',
   AI_ANALYZE = 'ai-analyze',
   VIDEO_GENERATE = 'video-generate',
   TRANSFORM = 'transform',

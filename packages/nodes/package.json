@@ -12,7 +12,8 @@
   "dependencies": {
     "@tk-workflow/types": "*",
     "@tk-workflow/core": "*",
-    "@tk-workflow/providers": "*"
+    "@tk-workflow/providers": "*",
+    "@ybd-project/x-bogus": "^1.0.4"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

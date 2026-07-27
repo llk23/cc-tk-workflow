@@ -23,7 +23,7 @@ export interface NodeDefinition {
   type: NodeTypeEnum;
   label: string;
   description: string;
-  category: 'input' | 'process' | 'ai' | 'output';
+  category: 'input' | 'process' | 'ai' | 'output' | 'config';
   icon: string;
   inputs: PortDefinition[];
   outputs: PortDefinition[];

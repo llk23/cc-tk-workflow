@@ -5,6 +5,8 @@
 export { BaseNode } from './base/base-node';
 export type { NodeDefinition, NodeExecutionContext } from './base/base-node';
 export { FetchTKVideoNode } from './fetch';
+export { TikTokAccountVerifyNode } from './fetch/account';
+export { ModelConfigNode } from './model-config';
 export { AIAnalyzeVideoNode } from './analyze';
 export { VideoGenerateNode } from './generate';
 export { TransformNode } from './transform';
@@ -13,6 +15,8 @@ export { OutputNode } from './output';
 
 import { NodeExecutor } from '@tk-workflow/core';
 import { FetchTKVideoNode } from './fetch';
+import { TikTokAccountVerifyNode } from './fetch/account';
+import { ModelConfigNode } from './model-config';
 import { AIAnalyzeVideoNode } from './analyze';
 import { VideoGenerateNode } from './generate';
 import { TransformNode } from './transform';
@@ -26,6 +30,8 @@ import { NodeExecutionContext } from './base/base-node';
 export function registerBuiltinNodes(executor: typeof NodeExecutor): void {
   const nodes = [
     new FetchTKVideoNode(),
+    new TikTokAccountVerifyNode(),
+    new ModelConfigNode(),
     new AIAnalyzeVideoNode(),
     new VideoGenerateNode(),
     new TransformNode(),

@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { TaskModule } from './modules/task/task.module';
 import { VideoModule } from './modules/video/video.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { AiModule } from './modules/ai/ai.module';
 import { WorkflowEntity } from './modules/workflow/entities/workflow.entity';
 import { ExecutionEntity } from './modules/workflow/entities/execution.entity';
 import { AnalysisResultEntity } from './modules/workflow/entities/analysis-result.entity';
@@ -25,10 +25,6 @@ import { GeneratedVideoEntity } from './modules/workflow/entities/generated-vide
       synchronize: true, // 开发期自动建表
       options: { encrypt: false },
     }),
-    // MongoDB：结构化分析报告(嵌套 JSON)
-    MongooseModule.forRoot(
-      process.env.MONGO_URL || 'mongodb://mongoadmin:mongoadmin@localhost:27017/tk_workflow?authSource=admin',
-    ),
     // BullMQ：异步任务队列(Redis 支撑)
     BullModule.forRoot({
       connection: {
@@ -40,6 +36,7 @@ import { GeneratedVideoEntity } from './modules/workflow/entities/generated-vide
     WorkflowModule,
     TaskModule,
     VideoModule,
+    AiModule,
   ],
 })
 export class AppModule {}

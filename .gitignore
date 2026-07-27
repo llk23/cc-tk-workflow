@@ -39,6 +39,10 @@ coverage/
 # Temp
 tmp/
 temp/
+.cache/
+
+# 本地种子工作流（含登录 Cookie，禁止提交）
+apps/web/public/seed/
 
 # Test
 junit.xml

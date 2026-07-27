@@ -1,4 +1,4 @@
-import { Processor } from '@nestjs/bullmq';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable } from '@nestjs/common';
 import { NodeExecutor, PipelineEngine, ContextStore } from '@tk-workflow/core';
@@ -17,13 +17,15 @@ import { WorkflowGateway } from './workflow.gateway';
  */
 @Injectable()
 @Processor('workflow')
-export class WorkflowConsumer {
+export class WorkflowConsumer extends WorkerHost {
   constructor(
     private readonly workflowService: WorkflowService,
     private readonly gateway: WorkflowGateway,
-  ) {}
+  ) {
+    super();
+  }
 
-  // @nestjs/bullmq v10：方法名 process 即被自动识别为任务处理器（无需 @Process 装饰器）
+  // @nestjs/bullmq v10：继承 WorkerHost 后，方法名 process 即被自动识别为任务处理器
   async process(job: Job<{ workflowId: string; executionId: string }>): Promise<void> {
     const { workflowId, executionId } = job.data;
 
@@ -55,11 +57,28 @@ export class WorkflowConsumer {
           ),
       });
 
+      // 收集所有节点的输出，确保每个节点的产出都能在历史中回查
+      // （包括 fetch-tk、ai-analyze 等中间节点，不限于 output 节点）
+      const nodeResults = (execution.context?.nodeResults || {}) as Record<
+        string,
+        { output?: unknown }
+      >;
+      const resultMap: Record<string, unknown> = {};
+      for (const [nodeId, nodeResult] of Object.entries(nodeResults)) {
+        if (nodeResult && nodeResult.output !== undefined) {
+          resultMap[nodeId] = nodeResult.output;
+        }
+      }
+
       await this.workflowService.updateExecution(executionId, {
         status: execution.status,
         progress: execution.progress,
         completedAt: execution.completedAt ? new Date(execution.completedAt) : undefined,
+        result: resultMap,
       });
+
+      // 实时把结果推给前端「结果」面板
+      this.gateway.pushProgress(executionId, 'result', undefined, JSON.stringify(resultMap));
 
       this.gateway.pushProgress(
         executionId,
