@@ -186,117 +186,105 @@
         </div>
       </aside>
 
-      <!-- 右侧分析详情抽屉 -->
-      <div v-if="drawerVideo" class="analysis-drawer">
-        <div class="drawer-header">
-          <div class="drawer-hd-left">
-            <span class="drawer-title">视频 #{{ drawerIndex! + 1 }} 详情</span>
-            <span class="drawer-id">{{ drawerVideo?.videoId?.slice(0, 12) }}…</span>
-            <span class="drawer-author" v-if="drawerVideo?.author">@{{ drawerVideo.author }}</span>
+      <!-- 分析详情模态框（可拖拽，遮挡画布） -->
+      <div v-if="drawerVideo" class="analysis-modal" :style="modalStyle" @mousedown="modalFocus">
+        <div class="modal-header" @mousedown.prevent="startDrag">
+          <div class="modal-hd-left">
+            <span class="modal-title">视频 #{{ drawerIndex! + 1 }} 详情</span>
+            <span class="modal-id">{{ drawerVideo?.videoId?.slice(0, 12) }}…</span>
+            <span class="modal-author" v-if="drawerVideo?.author">@{{ drawerVideo.author }}</span>
           </div>
-          <button class="drawer-close" @click="drawerVideo = null">✕</button>
+          <button class="modal-close" @click="drawerVideo = null">✕</button>
         </div>
 
-        <div class="drawer-body">
+        <div class="modal-body">
           <!-- 评分 + 元数据 -->
-          <div class="dr-grid-2">
-            <div class="dr-card">
-              <div class="dr-c-title">评分</div>
-              <div class="dr-scores">
-                <span class="dr-score-lg" :class="scoreClass(drawerVideo?.qualityScore)">{{ drawerVideo?.qualityScore }}</span>
-                <div>
-                  <div class="dr-sl">综合质量</div>
-                  <div class="dr-ss">钩子 {{ drawerVideo?.hookRating }}/10</div>
-                </div>
+          <div class="md-grid-2">
+            <div class="md-card">
+              <div class="md-ct">评分</div>
+              <div class="md-scores">
+                <span class="md-score-lg" :class="scoreClass(drawerVideo?.qualityScore)">{{ drawerVideo?.qualityScore }}</span>
+                <div><div class="md-sl">综合质量</div><div class="md-ss">钩子 {{ drawerVideo?.hookRating }}/10</div></div>
               </div>
-              <div class="dr-meta">
+              <div class="md-meta">
                 <span>▶ {{ fmtNum(drawerVideo?.plays) }}</span>
                 <span>❤ {{ fmtNum(drawerVideo?.likes) }}</span>
                 <span>💬 {{ fmtNum(drawerVideo?.comments) }}</span>
-                <span class="dr-dur">{{ drawerVideo?.duration }}s</span>
+                <span class="md-dur">{{ drawerVideo?.duration }}s</span>
               </div>
             </div>
-            <div class="dr-card">
-              <div class="dr-c-title">概览</div>
-              <div class="dr-row"><span class="dr-lbl">风格</span><span class="dr-val">{{ drawerParsed?.visual?.styleCategory || drawerVideo?.styleCategory || '—' }}</span></div>
-              <div class="dr-row"><span class="dr-lbl">节奏</span><span class="dr-val">{{ drawerParsed?.structure?.pacing || '—' }}</span></div>
-              <div class="dr-row"><span class="dr-lbl">文案</span><span class="dr-val">{{ drawerVideo?.captionStructure || drawerParsed?.caption?.structure || '—' }}</span></div>
-              <div class="dr-row"><span class="dr-lbl">情感</span><span class="dr-val dr-emotion">{{ drawerParsed?.viral?.emotionalTrigger || '—' }}</span></div>
+            <div class="md-card">
+              <div class="md-ct">概览</div>
+              <div class="md-row"><span class="md-lbl">风格</span><span class="md-val">{{ drawerParsed?.visual?.styleCategory || drawerVideo?.styleCategory || '—' }}</span></div>
+              <div class="md-row"><span class="md-lbl">节奏</span><span class="md-val">{{ drawerParsed?.structure?.pacing || '—' }}</span></div>
+              <div class="md-row"><span class="md-lbl">文案</span><span class="md-val">{{ drawerVideo?.captionStructure || drawerParsed?.caption?.structure || '—' }}</span></div>
+              <div class="md-row"><span class="md-lbl">情感</span><span class="md-val md-emotion">{{ drawerParsed?.viral?.emotionalTrigger || '—' }}</span></div>
             </div>
           </div>
 
-          <!-- 视觉 + 结构 -->
-          <div class="dr-grid-2">
-            <div class="dr-card">
-              <div class="dr-c-title">视觉</div>
-              <div class="dr-row" v-if="drawerParsed?.visual?.cameraLanguage?.length"><span class="dr-lbl">运镜</span><span class="dr-val">{{ drawerParsed.visual.cameraLanguage.join(' · ') }}</span></div>
-              <div class="dr-row" v-if="drawerParsed?.visual?.colorPalette?.length"><span class="dr-lbl">色调</span><span class="dr-val">{{ drawerParsed.visual.colorPalette.join(' · ') }}</span></div>
-              <div class="dr-row" v-if="drawerParsed?.visual?.textOverlay !== undefined"><span class="dr-lbl">文字</span><span class="dr-val">{{ drawerParsed.visual.textOverlay ? '有覆盖' : '无覆盖' }}</span></div>
-              <div class="dr-row" v-else><span class="dr-val" style="color:#ccc">无视觉数据</span></div>
+          <div class="md-grid-2">
+            <div class="md-card">
+              <div class="md-ct">视觉</div>
+              <div class="md-row" v-if="drawerParsed?.visual?.cameraLanguage?.length"><span class="md-lbl">运镜</span><span class="md-val">{{ drawerParsed.visual.cameraLanguage.join(' · ') }}</span></div>
+              <div class="md-row" v-if="drawerParsed?.visual?.colorPalette?.length"><span class="md-lbl">色调</span><span class="md-val">{{ drawerParsed.visual.colorPalette.join(' · ') }}</span></div>
+              <div class="md-row" v-if="drawerParsed?.visual?.textOverlay !== undefined"><span class="md-lbl">文字</span><span class="md-val">{{ drawerParsed.visual.textOverlay ? '有覆盖' : '无覆盖' }}</span></div>
+              <div class="md-row" v-else><span class="md-val" style="color:#ccc">无视觉数据</span></div>
             </div>
-            <div class="dr-card">
-              <div class="dr-c-title">结构</div>
-              <div class="dr-row"><span class="dr-lbl">钩子</span><span class="dr-val">{{ drawerParsed?.structure?.hookType || '—' }}</span></div>
-              <div class="dr-row" v-if="drawerParsed?.structure?.contentFlow?.length"><span class="dr-lbl">流程</span><span class="dr-val">{{ drawerParsed.structure.contentFlow.slice(0,4).join(' → ') }}</span></div>
-            </div>
-          </div>
-
-          <!-- 音频 + 受众 -->
-          <div class="dr-grid-2">
-            <div class="dr-card">
-              <div class="dr-c-title">音频</div>
-              <div class="dr-row"><span class="dr-lbl">BGM</span><span class="dr-val">{{ drawerParsed?.audio?.bgmMood || '—' }}</span></div>
-              <div class="dr-row"><span class="dr-lbl">人声</span><span class="dr-val">{{ drawerParsed?.audio?.voiceoverStyle || '—' }}</span></div>
-            </div>
-            <div class="dr-card">
-              <div class="dr-c-title">受众</div>
-              <div class="dr-row" v-if="drawerVideo?.targetAudience?.length"><span class="dr-val">{{ drawerVideo.targetAudience.slice(0, 4).join(' · ') }}</span></div>
-              <div class="dr-row" v-if="drawerParsed?.caption?.keyPhrases?.length"><span class="dr-lbl">关键词</span><span class="dr-val">{{ drawerParsed.caption.keyPhrases.join(' · ') }}</span></div>
+            <div class="md-card">
+              <div class="md-ct">结构</div>
+              <div class="md-row"><span class="md-lbl">钩子</span><span class="md-val">{{ drawerParsed?.structure?.hookType || '—' }}</span></div>
+              <div class="md-row" v-if="drawerParsed?.structure?.contentFlow?.length"><span class="md-lbl">流程</span><span class="md-val">{{ drawerParsed.structure.contentFlow.slice(0,4).join(' → ') }}</span></div>
             </div>
           </div>
 
-          <!-- 核心要素 -->
-          <div class="dr-card dr-card-full">
-            <div class="dr-c-title">核心要素</div>
-            <div class="dr-row"><span class="dr-lbl">风格标签</span>
-              <span class="dr-val tags-inline">
-                <span v-for="(t, ti) in (drawerParsed?.replication?.styleTags || [])" :key="ti" class="dr-tag">{{ t }}</span>
+          <div class="md-grid-2">
+            <div class="md-card">
+              <div class="md-ct">音频</div>
+              <div class="md-row"><span class="md-lbl">BGM</span><span class="md-val">{{ drawerParsed?.audio?.bgmMood || '—' }}</span></div>
+              <div class="md-row"><span class="md-lbl">人声</span><span class="md-val">{{ drawerParsed?.audio?.voiceoverStyle || '—' }}</span></div>
+            </div>
+            <div class="md-card">
+              <div class="md-ct">受众</div>
+              <div class="md-row" v-if="drawerVideo?.targetAudience?.length"><span class="md-val">{{ drawerVideo.targetAudience.slice(0, 4).join(' · ') }}</span></div>
+              <div class="md-row" v-if="drawerParsed?.caption?.keyPhrases?.length"><span class="md-lbl">关键词</span><span class="md-val">{{ drawerParsed.caption.keyPhrases.join(' · ') }}</span></div>
+            </div>
+          </div>
+
+          <div class="md-card md-card-full">
+            <div class="md-ct">核心要素</div>
+            <div class="md-row"><span class="md-lbl">风格标签</span>
+              <span class="md-val tags-inline">
+                <span v-for="(t, ti) in (drawerParsed?.replication?.styleTags || [])" :key="ti" class="md-tag">{{ t }}</span>
                 <span v-if="!drawerParsed?.replication?.styleTags?.length">—</span>
               </span>
             </div>
-            <div class="dr-row" v-if="drawerParsed?.replication?.keyIngredients?.length"><span class="dr-lbl">关键元素</span><span class="dr-val">{{ drawerParsed.replication.keyIngredients.join(' · ') }}</span></div>
-            <div class="dr-row" v-if="drawerParsed?.viral?.trendAlignment"><span class="dr-lbl">趋势</span><span class="dr-val">{{ drawerParsed.viral.trendAlignment }}/10</span></div>
-            <div class="dr-tags">
-              <span v-for="(t, ti) in (drawerVideo?.generatedTags || [])" :key="ti" class="dr-tag-li">{{ t }}</span>
+            <div class="md-row" v-if="drawerParsed?.replication?.keyIngredients?.length"><span class="md-lbl">关键元素</span><span class="md-val">{{ drawerParsed.replication.keyIngredients.join(' · ') }}</span></div>
+            <div class="md-row" v-if="drawerParsed?.viral?.trendAlignment"><span class="md-lbl">趋势</span><span class="md-val">{{ drawerParsed.viral.trendAlignment }}/10</span></div>
+            <div class="md-tags">
+              <span v-for="(t, ti) in (drawerVideo?.generatedTags || [])" :key="ti" class="md-tag-li">{{ t }}</span>
             </div>
           </div>
 
           <!-- 生成提示词 -->
-          <div class="dr-card dr-card-full dr-card-prompt">
-            <div class="dr-c-title dr-c-title-row">
+          <div class="md-card md-card-full md-card-prompt">
+            <div class="md-ct md-ct-row">
               <span>🎬 生成提示词</span>
-              <span class="dr-prompt-hint">可编辑 · 修改后点击保存</span>
+              <span class="md-prompt-hint">可编辑 · 修改后点击保存</span>
             </div>
-            <textarea
-              class="dr-prompt-ta"
-              :value="drawerEditedPrompt"
-              @input="drawerEditedPrompt = ($event.target as HTMLTextAreaElement).value"
-              placeholder="暂无生成提示词"
-              rows="6"
-            ></textarea>
-            <div class="dr-save-row">
-              <span v-if="drawerSaveStatus" class="dr-save-status">{{ drawerSaveStatus }}</span>
-              <button class="dr-save-btn" @click="saveDrawerPrompt">💾 保存提示词</button>
+            <textarea class="md-prompt-ta" :value="drawerEditedPrompt" @input="drawerEditedPrompt = ($event.target as HTMLTextAreaElement).value" placeholder="暂无生成提示词" rows="6"></textarea>
+            <div class="md-save-row">
+              <span v-if="drawerSaveStatus" class="md-save-status">{{ drawerSaveStatus }}</span>
+              <button class="md-save-btn" @click="saveDrawerPrompt">💾 保存提示词</button>
             </div>
           </div>
 
           <!-- 优化建议 -->
-          <div class="dr-card dr-card-full">
-            <div class="dr-c-title">优化建议</div>
-            <ul class="dr-sug-list" v-if="drawerVideo?.suggestions?.length">
-              <li v-for="(s, si) in drawerVideo.suggestions" :key="si" class="dr-sug-item">{{ s }}</li>
+          <div class="md-card md-card-full">
+            <div class="md-ct">优化建议</div>
+            <ul class="md-sug-list" v-if="drawerVideo?.suggestions?.length">
+              <li v-for="(s, si) in drawerVideo.suggestions" :key="si" class="md-sug-item">{{ s }}</li>
             </ul>
-            <div v-else class="dr-val" style="color:#ccc">—</div>
+            <div v-else class="md-val" style="color:#ccc">—</div>
           </div>
         </div>
       </div>
@@ -366,6 +354,7 @@ const iconMap: Record<string, string> = {
   'tk-account-verify': '🔐',
   'model-config': '🤖',
   'ai-analyze': '🧠',
+  'ai-analyze-seedance': '🎯',
   'video-generate': '🎬',
   transform: '🔄',
   condition: '🔀',
@@ -375,7 +364,7 @@ function nodeIcon(type?: string): string {
   return (type && iconMap[type]) || '⚙️'
 }
 
-// ===== 分析详情抽屉 =====
+// ===== 分析详情模态框（可拖拽） =====
 import { provide, ref, computed, watch } from 'vue'
 import axios from 'axios'
 
@@ -384,6 +373,39 @@ const drawerIndex = ref<number | null>(null)
 const drawerAnalyses = ref<any[]>([])
 const drawerEditedPrompt = ref('')
 const drawerSaveStatus = ref('')
+
+// 拖拽状态
+const modalPos = ref({ x: 60, y: 60 })
+const dragging = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
+const dragOrigin = ref({ x: 0, y: 0 })
+const modalStyle = computed(() => ({
+  left: modalPos.value.x + 'px',
+  top: modalPos.value.y + 'px',
+}))
+
+function startDrag(e: MouseEvent) {
+  dragging.value = true
+  dragStart.value = { x: e.clientX, y: e.clientY }
+  dragOrigin.value = { x: modalPos.value.x, y: modalPos.value.y }
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', endDrag)
+}
+function onDrag(e: MouseEvent) {
+  if (!dragging.value) return
+  modalPos.value = {
+    x: dragOrigin.value.x + (e.clientX - dragStart.value.x),
+    y: dragOrigin.value.y + (e.clientY - dragStart.value.y),
+  }
+}
+function endDrag() {
+  dragging.value = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', endDrag)
+}
+function modalFocus() {
+  // 点击模态框时将其移到最前（z-index 已由 CSS 控制）
+}
 
 const drawerParsed = computed(() => {
   const v = drawerVideo.value
@@ -456,6 +478,7 @@ const availableNodes = [
   { type: 'tk-account-verify', label: 'TK 账号验证', icon: '🔐', description: '校验 TikTok 登录 Cookie 是否有效' },
   { type: 'model-config', label: 'AI 模型配置', icon: '🤖', description: '配置多模态分析模型（OpenAI 兼容接口）' },
   { type: 'ai-analyze', label: 'AI 视频分析', icon: '🧠', description: '多模态 AI 分析' },
+  { type: 'ai-analyze-seedance', label: '视频分析(即梦SD2.0)', icon: '🎯', description: '加载Seedance2.0技能指南，输出SD2.0格式提示词' },
   { type: 'video-generate', label: 'AI 视频生成', icon: '🎬', description: '生成新视频' },
   { type: 'transform', label: '数据转换', icon: '🔄', description: '格式转换/过滤' },
   { type: 'condition', label: '条件判断', icon: '🔀', description: '条件分支路由' },
@@ -467,7 +490,7 @@ interface PaletteCategory { name: string; cls: string; nodes: typeof availableNo
 const paletteCategories: PaletteCategory[] = [
   { name: '数据源', cls: 'input', nodes: availableNodes.filter(n => ['fetch-tk','tk-account-verify'].includes(n.type)) },
   { name: '配置', cls: 'config', nodes: availableNodes.filter(n => ['model-config'].includes(n.type)) },
-  { name: 'AI 处理', cls: 'ai', nodes: availableNodes.filter(n => ['ai-analyze','video-generate'].includes(n.type)) },
+  { name: 'AI 处理', cls: 'ai', nodes: availableNodes.filter(n => ['ai-analyze','ai-analyze-seedance','video-generate'].includes(n.type)) },
   { name: '逻辑处理', cls: 'transform', nodes: availableNodes.filter(n => ['transform','condition'].includes(n.type)) },
   { name: '输出', cls: 'output', nodes: availableNodes.filter(n => ['output'].includes(n.type)) },
 ]
@@ -514,6 +537,8 @@ function defaultConfig(nodeType: string): Record<string, unknown> {
       return { cookie: '', region: 'US' }
     case 'model-config':
       return { apiBaseUrl: '', apiKey: '', model: '' }
+    case 'ai-analyze-seedance':
+      return { analysisMode: 'video', customPrompt: '' }
     case 'condition':
       return { field: 'duration', operator: 'gt', value: 30 }
     case 'ai-analyze':
@@ -685,6 +710,10 @@ const GROUPS_BY_TYPE: Record<string, ConfigGroup[]> = {
   'condition': [{ name: '筛选条件', keys: ['field', 'operator', 'value'] }],
   'ai-analyze': [
     { name: '分析模式', keys: ['analysisMode'] },
+    { name: '自定义分析指令', keys: ['customPrompt'] },
+  ],
+  'ai-analyze-seedance': [
+    { name: 'Seedance 2.0 分析', keys: ['analysisMode'] },
     { name: '自定义分析指令', keys: ['customPrompt'] },
   ],
   'video-generate': [{ name: '生成设置', keys: ['tool', 'durationSec'] }],
@@ -1530,86 +1559,92 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   color: #777;
 }
 
-/* ===== 分析详情抽屉 ===== */
-.analysis-drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 420px;
-  height: 100%;
+/* ===== 分析详情模态框（可拖拽） ===== */
+.analysis-modal {
+  position: fixed;
+  left: 60px;
+  top: 60px;
+  width: 520px;
+  max-height: 85vh;
   background: #fff;
-  border-left: 1px solid #e8e8ee;
-  box-shadow: -4px 0 20px rgba(0,0,0,0.08);
-  z-index: 50;
+  border: 1px solid #e0e0ea;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  z-index: 2000;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: drawerIn 0.2s ease-out;
+  animation: modalIn 0.2s ease-out;
 }
-@keyframes drawerIn {
-  from { transform: translateX(20px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+@keyframes modalIn {
+  from { transform: scale(0.96) translateY(8px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
 }
-.drawer-header {
+.modal-header {
   display: flex;
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid #eee;
   flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+  background: #fafafe;
+  border-radius: 14px 14px 0 0;
 }
-.drawer-hd-left {
+.modal-header:active { cursor: grabbing; }
+.modal-hd-left {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.drawer-title { font-size: 14px; font-weight: 600; color: #333; }
-.drawer-id { font-size: 10px; color: #bbb; font-family: monospace; }
-.drawer-author { font-size: 11px; color: #7b61ff; font-weight: 500; }
-.drawer-close {
+.modal-title { font-size: 14px; font-weight: 600; color: #333; }
+.modal-id { font-size: 10px; color: #bbb; font-family: monospace; }
+.modal-author { font-size: 11px; color: #7b61ff; font-weight: 500; }
+.modal-close {
   width: 28px; height: 28px;
   border: none; background: #f0f0f5; border-radius: 6px;
   cursor: pointer; font-size: 14px; color: #888;
   display: flex; align-items: center; justify-content: center;
 }
-.drawer-close:hover { background: #e4e4ec; color: #555; }
-.drawer-body {
+.modal-close:hover { background: #e4e4ec; color: #555; }
+.modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.dr-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.dr-card {
+.md-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.md-card {
   background: #f8f8fc;
   border-radius: 10px;
   padding: 12px;
 }
-.dr-card-full { margin: 0; }
-.dr-card-prompt {
+.md-card-full { margin: 0; }
+.md-card-prompt {
   background: #f5f0ff;
   border: 1px solid #e4daff;
 }
-.dr-c-title { font-size: 12px; font-weight: 600; color: #7b61ff; margin-bottom: 8px; }
-.dr-c-title-row { display: flex; align-items: center; gap: 8px; }
-.dr-prompt-hint { font-size: 10px; font-weight: 400; color: #aaa; }
-.dr-scores { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.dr-score-lg { font-size: 30px; font-weight: 700; padding: 0 8px; border-radius: 6px; line-height: 1.2; }
-.dr-sl { font-size: 11px; color: #888; }
-.dr-ss { font-size: 10px; color: #999; margin-top: 1px; }
-.dr-meta { display: flex; gap: 10px; font-size: 11px; color: #666; }
-.dr-dur { margin-left: auto; color: #999; }
-.dr-row { display: flex; gap: 6px; padding: 3px 0; line-height: 1.6; align-items: baseline; }
-.dr-lbl { font-size: 10px; color: #999; white-space: nowrap; min-width: 38px; }
-.dr-val { font-size: 11px; color: #444; flex: 1; }
-.dr-emotion { color: #d85a30; font-weight: 500; }
-.dr-tag { font-size: 10px; color: #7b61ff; background: #eae5ff; padding: 0 6px; border-radius: 3px; line-height: 18px; }
+.md-ct { font-size: 12px; font-weight: 600; color: #7b61ff; margin-bottom: 8px; }
+.md-ct-row { display: flex; align-items: center; gap: 8px; }
+.md-prompt-hint { font-size: 10px; font-weight: 400; color: #aaa; }
+.md-scores { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.md-score-lg { font-size: 30px; font-weight: 700; padding: 0 8px; border-radius: 6px; line-height: 1.2; }
+.md-sl { font-size: 11px; color: #888; }
+.md-ss { font-size: 10px; color: #999; margin-top: 1px; }
+.md-meta { display: flex; gap: 10px; font-size: 11px; color: #666; }
+.md-dur { margin-left: auto; color: #999; }
+.md-row { display: flex; gap: 6px; padding: 3px 0; line-height: 1.6; align-items: baseline; }
+.md-lbl { font-size: 10px; color: #999; white-space: nowrap; min-width: 38px; }
+.md-val { font-size: 11px; color: #444; flex: 1; }
+.md-emotion { color: #d85a30; font-weight: 500; }
+.md-tag { font-size: 10px; color: #7b61ff; background: #eae5ff; padding: 0 6px; border-radius: 3px; line-height: 18px; }
 .tags-inline { display: flex; gap: 3px; flex-wrap: wrap; }
-.dr-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.dr-tag-li { font-size: 10px; color: #7b61ff; background: #f0edff; padding: 2px 8px; border-radius: 4px; }
-.dr-prompt-ta {
+.md-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.md-tag-li { font-size: 10px; color: #7b61ff; background: #f0edff; padding: 2px 8px; border-radius: 4px; }
+.md-prompt-ta {
   width: 100%; min-height: 120px;
   font-size: 12px; line-height: 1.7; color: #333;
   background: #fff; border: 1px solid #ddd; border-radius: 8px;
@@ -1618,20 +1653,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
-.dr-prompt-ta:focus { border-color: #7b61ff; box-shadow: 0 0 0 2px rgba(123,97,255,0.15); }
-.dr-prompt-ta::placeholder { color: #ccc; }
-.dr-save-row {
+.md-prompt-ta:focus { border-color: #7b61ff; box-shadow: 0 0 0 2px rgba(123,97,255,0.15); }
+.md-prompt-ta::placeholder { color: #ccc; }
+.md-save-row {
   display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 8px;
 }
-.dr-save-status { font-size: 11px; color: #888; }
-.dr-save-btn {
+.md-save-status { font-size: 11px; color: #888; }
+.md-save-btn {
   padding: 5px 14px; font-size: 11px; font-weight: 500;
   background: #7b61ff; color: #fff; border: none; border-radius: 6px;
   cursor: pointer; transition: background 0.12s;
 }
-.dr-save-btn:hover { background: #6a4ff0; }
-.dr-sug-list { margin: 0; padding: 0 0 0 16px; }
-.dr-sug-item { font-size: 11px; color: #d85a30; line-height: 1.8; }
+.md-save-btn:hover { background: #6a4ff0; }
+.md-sug-list { margin: 0; padding: 0 0 0 16px; }
+.md-sug-item { font-size: 11px; color: #d85a30; line-height: 1.8; }
 .sc-high { background: #e6f7e6; color: #389e38; }
 .sc-mid  { background: #fff3cd; color: #b8860b; }
 .sc-low  { background: #fcebeb; color: #c0392b; }

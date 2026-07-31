@@ -9,6 +9,7 @@ import {
   TikTokAccountVerifyNode,
   ModelConfigNode,
   AIAnalyzeVideoNode,
+  SeedanceAnalyzeNode,
   VideoGenerateNode,
   TransformNode,
   ConditionNode,
@@ -290,6 +291,8 @@ export class WorkflowService {
         return new ModelConfigNode();
       case NodeTypeEnum.AI_ANALYZE:
         return new AIAnalyzeVideoNode();
+      case NodeTypeEnum.AI_ANALYZE_SEEDANCE:
+        return new SeedanceAnalyzeNode();
       case NodeTypeEnum.VIDEO_GENERATE:
         return new VideoGenerateNode();
       case NodeTypeEnum.TRANSFORM:

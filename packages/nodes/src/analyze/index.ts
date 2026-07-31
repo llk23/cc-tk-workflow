@@ -141,8 +141,30 @@ export class AIAnalyzeVideoNode extends BaseNode {
   ): Promise<VideoAnalysis> {
     const metadata = video.metadata || video;
 
-    const systemPrompt = `你是一个专业的 TikTok 视频分析师。根据视频的元数据，分析并输出 JSON。只输出 JSON。
+    // 同样加载 Seedance skill 来保证 generationPrompt 质量
+    const skillPaths = [
+      path.join(process.env.HOME || process.env.USERPROFILE || 'C:/Users/Administrator',
+        '.workbuddy', 'skills', 'seedance-prompt-en', 'zh', 'SKILL.md'),
+      path.join('C:/Users/Administrator', '.workbuddy', 'skills', 'seedance-prompt-en', 'zh', 'SKILL.md'),
+    ];
+    let skillContent = '';
+    for (const p of skillPaths) {
+      try {
+        if (fs.existsSync(p)) {
+          skillContent = fs.readFileSync(p, 'utf-8');
+          break;
+        }
+      } catch {}
+    }
 
+    const systemPrompt = `你是顶级的短视频分析师兼 Seedance 2.0 提示词工程师。根据提供的视频元数据（描述、播放量、点赞数等），分析视频并输出 JSON。**只输出 JSON**。
+
+## 核心技能
+${skillContent ? `以下是 Seedance 2.0 视频生成模型的完整提示词撰写指南。分析完后需要基于此指南生成高质量的复刻提示词（放在 replication.generationPrompt 字段中）：
+
+${skillContent}` : ''}
+
+## 输出格式
 {
   "qualityScore": 1-10,
   "hookRating": 1-10,
@@ -152,8 +174,14 @@ export class AIAnalyzeVideoNode extends BaseNode {
   "captionStructure": "AIDA|PAS|BEFORE_AFTER|HOW_TO|STORY|OTHER",
   "targetAudience": ["标签1", "标签2"],
   "suggestions": ["建议1", "建议2", "建议3"],
-  "generatedTags": ["#tag1", "#tag2", "#tag3"]
-}`;
+  "generatedTags": ["#tag1", "#tag2", "#tag3"],
+  "replication": {
+    "generationPrompt": "根据 Seedance 2.0 语法编写的完整复刻提示词",
+    "styleTags": ["风格标签1", "风格标签2"],
+    "keyIngredients": ["核心要素1", "核心要素2"]
+  }
+}
+${customPrompt ? `\n## 额外要求\n${customPrompt}` : ''}`;
 
     const userPrompt = `请分析以下 TikTok 视频元数据：
 标题/描述：${video.description || metadata.description || '无'}
@@ -179,7 +207,7 @@ ${customPrompt ? `\n额外要求：${customPrompt}` : ''}`;
       styleCategory: parsed.styleCategory || 'other',
       captionStructure: parsed.captionStructure || 'OTHER',
       targetAudience: parsed.targetAudience || [],
-      suggestions: parsed.suggestions || [],
+      suggestions: parsed.replication?.suggestions || parsed.suggestions || [],
       generatedTags: parsed.generatedTags || [`#${video.author || 'TK视频'}`, '#内容分析'],
       rawOutput: raw,
       analyzedAt: new Date().toISOString(),
@@ -310,8 +338,35 @@ ${customPrompt ? `\n额外要求：${customPrompt}` : ''}`;
   }
 
   private buildVideoAnalysisPrompt(customPrompt: string): string {
-    return `你是顶级短视频分析师。分析视频截图后输出 JSON，**只输出 JSON**。
+    // 加载 Seedance 2.0 提示词撰写指南作为核心知识
+    const skillPaths = [
+      path.join(process.env.HOME || process.env.USERPROFILE || 'C:/Users/Administrator',
+        '.workbuddy', 'skills', 'seedance-prompt-en', 'zh', 'SKILL.md'),
+      path.join('C:/Users/Administrator', '.workbuddy', 'skills', 'seedance-prompt-en', 'zh', 'SKILL.md'),
+    ];
+    let skillContent = '';
+    for (const p of skillPaths) {
+      try {
+        if (fs.existsSync(p)) {
+          skillContent = fs.readFileSync(p, 'utf-8');
+          break;
+        }
+      } catch {}
+    }
 
+    return `你是顶级的短视频分析师兼 Seedance 2.0 提示词工程师。
+
+## 任务
+分析视频截图后输出 JSON。**只输出 JSON**，不要包含任何其他文字。
+
+## 核心技能
+${skillContent ? `以下是 Seedance 2.0 视频生成模型的完整提示词撰写指南。当你分析完视频后，需要基于这个指南生成高质量的复刻提示词（放在 replication.generationPrompt 字段中）：
+
+${skillContent}` : '你需要根据视频内容，输出结构化分析结果。'}
+
+${customPrompt ? `\n## 额外要求\n${customPrompt}` : ''}
+
+## 输出格式
 {
   "overallScore": 1-10,
   "visual": {
@@ -343,7 +398,7 @@ ${customPrompt ? `\n额外要求：${customPrompt}` : ''}`;
     "trendAlignment": 1-10
   },
   "replication": {
-    "generationPrompt": "一段可直接用于 AI 视频生成模型的提示词",
+    "generationPrompt": "根据 Seedance 2.0 语法编写的完整复刻提示词，包含主体设定、场景环境、运镜语言、分时段描述、风格修饰词",
     "styleTags": ["风格标签1", "风格标签2"],
     "keyIngredients": ["核心要素1", "核心要素2"],
     "suggestions": ["优化建议1", "优化建议2"]

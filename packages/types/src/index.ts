@@ -49,6 +49,7 @@ export enum NodeTypeEnum {
   TK_ACCOUNT_VERIFY = 'tk-account-verify',
   MODEL_CONFIG = 'model-config',
   AI_ANALYZE = 'ai-analyze',
+  AI_ANALYZE_SEEDANCE = 'ai-analyze-seedance',
   VIDEO_GENERATE = 'video-generate',
   TRANSFORM = 'transform',
   CONDITION = 'condition',

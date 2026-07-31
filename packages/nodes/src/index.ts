@@ -8,6 +8,7 @@ export { FetchTKVideoNode } from './fetch';
 export { TikTokAccountVerifyNode } from './fetch/account';
 export { ModelConfigNode } from './model-config';
 export { AIAnalyzeVideoNode } from './analyze';
+export { SeedanceAnalyzeNode } from './seedance-analyze';
 export { VideoGenerateNode } from './generate';
 export { TransformNode } from './transform';
 export { ConditionNode } from './condition';
@@ -18,6 +19,7 @@ import { FetchTKVideoNode } from './fetch';
 import { TikTokAccountVerifyNode } from './fetch/account';
 import { ModelConfigNode } from './model-config';
 import { AIAnalyzeVideoNode } from './analyze';
+import { SeedanceAnalyzeNode } from './seedance-analyze';
 import { VideoGenerateNode } from './generate';
 import { TransformNode } from './transform';
 import { ConditionNode } from './condition';
@@ -33,6 +35,7 @@ export function registerBuiltinNodes(executor: typeof NodeExecutor): void {
     new TikTokAccountVerifyNode(),
     new ModelConfigNode(),
     new AIAnalyzeVideoNode(),
+    new SeedanceAnalyzeNode(),
     new VideoGenerateNode(),
     new TransformNode(),
     new ConditionNode(),

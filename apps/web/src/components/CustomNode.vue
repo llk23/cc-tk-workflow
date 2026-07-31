@@ -25,13 +25,21 @@
         :title="historyOpen ? '收起历史' : '查看历史抓取记录'"
       >{{ historyOpen ? '▾' : '▸' }}</button>
 
-      <!-- ai-analyze：结果展开按钮（在 .wf-node 内部，position:relative 生效） -->
+      <!-- ai-analyze：结果展开按钮 -->
       <button
         v-if="data.nodeType === 'ai-analyze'"
         class="wf-history-btn"
         @click.stop="toggleAiHistory"
         :title="aiOpen ? '收起分析结果' : '查看分析结果'"
       >{{ aiOpen ? '▾' : '▸' }}</button>
+
+      <!-- ai-analyze-seedance：结果展开按钮 -->
+      <button
+        v-if="data.nodeType === 'ai-analyze-seedance'"
+        class="wf-history-btn"
+        @click.stop="toggleSeedanceHistory"
+        :title="sdOpen ? '收起分析结果' : '查看分析结果'"
+      >{{ sdOpen ? '▾' : '▸' }}</button>
     </div>
 
     <!-- fetch-tk：历史记录下拉区域 -->
@@ -127,6 +135,43 @@
         <!-- Lv3 独立展示在右侧抽屉中，不在此处渲染 -->
       </template>
     </div>
+
+    <!-- ai-analyze-seedance：历史分析结果下拉面板（仅展示视频列表，暂无详情） -->
+    <div v-if="sdOpen" class="wf-ai-drop" @click.stop>
+      <div v-if="sdLoading" class="wh-loading">加载中…</div>
+      <div v-else-if="sdRecords.length === 0" class="wh-empty">暂无历史分析记录</div>
+      <template v-else>
+        <div v-for="(rec, ri) in sdRecords" :key="ri">
+          <div class="ai-rec-hd" @click="rec._open = !rec._open">
+            <span class="ai-rec-time">{{ rec.time }}</span>
+            <span class="ai-rec-mode">SD2.0</span>
+            <span class="ai-rec-meta">{{ rec.total }} 个视频</span>
+            <span class="wh-arrow">{{ rec._open ? '▾' : '▸' }}</span>
+          </div>
+          <div v-if="rec._open" class="ai-rec-bd">
+            <div v-for="(a, ai) in rec.analyses" :key="ai" class="ai-vid-card" style="cursor:default">
+              <div class="ai-vid-cover-wrap">
+                <div class="ai-vid-cover-fallback"><span class="ai-vid-fb-icon">▶</span></div>
+                <span class="ai-vid-dur" v-if="a.duration">{{ a.duration > 60 ? Math.floor(a.duration/60)+':'+String(a.duration%60).padStart(2,'0') : a.duration+'s' }}</span>
+              </div>
+              <div class="ai-vid-body">
+                <div class="ai-vid-top">
+                  <span class="ai-vid-score" :class="scoreClass(a.qualityScore)">{{ a.qualityScore }}</span>
+                  <span class="ai-vid-score" :class="scoreClass(a.hookRating)">钩{{ a.hookRating }}</span>
+                  <span class="ai-vid-label">{{ a.styleCategory?.split('|')[0] || 'other' }}</span>
+                  <span class="ai-vid-stats">▶ {{ fmtNum(a.plays) }} · ❤ {{ fmtNum(a.likes) }}</span>
+                </div>
+                <div class="ai-vid-author" v-if="a.author">@{{ a.author }}</div>
+                <div class="ai-vid-desc" v-if="a.description">{{ truncate(a.description, 60) }}</div>
+                <div class="ai-vid-footer">
+                  <span v-for="(t, ti) in (a.generatedTags || []).slice(0, 3)" :key="ti" class="ai-vid-tag">{{ t }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -144,6 +189,7 @@ const iconMap: Record<string, string> = {
   'fetch-tk': '📥',
   'tk-account-verify': '🔐',
   'ai-analyze': '🧠',
+  'ai-analyze-seedance': '🎯',
   'video-generate': '🎬',
   transform: '🔄',
   condition: '🔀',
@@ -154,6 +200,70 @@ const icon = iconMap[props.data.nodeType] || '⚙️'
 // ===== ai-analyze 历史分析记录 (3级下钻) =====
 const aiOpen = ref(false)
 const aiLoading = ref(false)
+
+// ===== ai-analyze-seedance 历史分析记录 =====
+const sdOpen = ref(false)
+const sdLoading = ref(false)
+const sdRecords = ref<Array<{
+  time: string
+  mode: string
+  total: number
+  analyses: Array<any>
+  _open: boolean
+}>>([])
+
+async function toggleSeedanceHistory() {
+  sdOpen.value = !sdOpen.value
+  if (!sdOpen.value || sdRecords.value.length > 0) return
+  sdLoading.value = true
+  try {
+    const res = await axios.get('/api/workflows', { timeout: 5000 })
+    const workflows: Array<any> = Array.isArray(res.data) ? res.data : []
+    const wf = workflows.find((w: any) => (w.nodes || []).some((n: any) => n.id === props.id))
+    if (!wf) { sdLoading.value = false; return }
+    const histRes = await axios.get(`/api/workflows/${wf.id}/history`, { timeout: 8000 })
+    const list: Array<any> = Array.isArray(histRes.data) ? histRes.data : []
+    for (const exec of list) {
+      if (exec.status !== 'completed') continue
+      const allResults = exec.result as Record<string, any> | undefined
+      if (!allResults) continue
+      let output = allResults[props.id]
+      if (!output?.analyses?.length) {
+        for (const v of Object.values(allResults)) {
+          const o = (v as any)
+          output = o?.data?.[props.id] || o?.[props.id]
+          if (output?.analyses?.length) break
+        }
+      }
+      if (!output?.analyses?.length) continue
+      sdRecords.value.push({
+        time: formatTime(exec.startedAt),
+        mode: 'SD2.0',
+        total: output.total || output.analyses.length,
+        analyses: output.analyses.map((a: any) => ({
+          videoId: a.videoId || '',
+          qualityScore: a.qualityScore ?? 0,
+          hookRating: a.hookRating ?? 0,
+          styleCategory: a.styleCategory || 'other',
+          captionStructure: a.captionStructure,
+          targetAudience: a.targetAudience || [],
+          suggestions: a.suggestions || [],
+          generatedTags: a.generatedTags || [],
+          rawOutput: a.rawOutput || '',
+          author: a.author || '',
+          description: a.description || '',
+          plays: a.plays ?? 0,
+          likes: a.likes ?? 0,
+          duration: a.duration ?? 0,
+        })),
+        _open: false,
+      })
+    }
+    sdRecords.value = sdRecords.value.slice(0, 20)
+  } catch { /* ignore */ }
+  sdLoading.value = false
+}
+
 const aiDetailRec = ref<number | null>(null)
 const aiDetailIdx = ref<number | null>(null)
 const aiRecords = ref<Array<{
@@ -230,7 +340,6 @@ async function toggleAiHistory() {
           const o = (v as any)
           output = o?.data?.[props.id] || o?.[props.id]
           if (output?.analyses?.length) break
-          if (o?.analyses?.length) { output = o; break }
         }
       }
       if (!output?.analyses?.length) continue
@@ -405,6 +514,7 @@ function formatTime(iso: string): string {
 .wf-type-fetch-tk { border-left: 3px solid #4a90d9; }
 .wf-type-tk-account-verify { border-left: 3px solid #4a90d9; }
 .wf-type-ai-analyze { border-left: 3px solid #7b61ff; }
+.wf-type-ai-analyze-seedance { border-left: 3px solid #f59e0b; }
 .wf-type-video-generate { border-left: 3px solid #7b61ff; }
 .wf-type-transform { border-left: 3px solid #e8a838; }
 .wf-type-condition { border-left: 3px solid #e8a838; }
