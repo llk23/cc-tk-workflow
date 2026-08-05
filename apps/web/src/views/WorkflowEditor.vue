@@ -322,7 +322,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick, provide } from 'vue'
 import { VueFlow, useVueFlow, MarkerType } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -350,7 +350,7 @@ const {
 const nodeTypes = { custom: CustomNode } as any
 
 const iconMap: Record<string, string> = {
-  'fetch-tk': '📥',
+  'fetch-tk-playwright': '🌐',
   'tk-account-verify': '🔐',
   'model-config': '🤖',
   'ai-analyze': '🧠',
@@ -365,7 +365,6 @@ function nodeIcon(type?: string): string {
 }
 
 // ===== 分析详情模态框（可拖拽） =====
-import { provide, ref, computed, watch } from 'vue'
 import axios from 'axios'
 
 const drawerVideo = ref<any>(null)
@@ -474,7 +473,7 @@ function fmtNum(n: number): string {
 }
 
 const availableNodes = [
-  { type: 'fetch-tk', label: 'TK 视频抓取', icon: '📥', description: '通过浏览器搜索 TK 视频，支持带货判定与多种过滤' },
+  { type: 'fetch-tk-playwright', label: 'TK 视频抓取', icon: '🌐', description: 'Playwright 进程内浏览器抓取，无需外部 CDP 代理，支持带货判定与多种过滤' },
   { type: 'tk-account-verify', label: 'TK 账号验证', icon: '🔐', description: '校验 TikTok 登录 Cookie 是否有效' },
   { type: 'model-config', label: 'AI 模型配置', icon: '🤖', description: '配置多模态分析模型（OpenAI 兼容接口）' },
   { type: 'ai-analyze', label: 'AI 视频分析', icon: '🧠', description: '多模态 AI 分析' },
@@ -488,7 +487,7 @@ const availableNodes = [
 /** 左侧节点库按类别分组 */
 interface PaletteCategory { name: string; cls: string; nodes: typeof availableNodes }
 const paletteCategories: PaletteCategory[] = [
-  { name: '数据源', cls: 'input', nodes: availableNodes.filter(n => ['fetch-tk','tk-account-verify'].includes(n.type)) },
+  { name: '数据源', cls: 'input', nodes: availableNodes.filter(n => ['fetch-tk-playwright','tk-account-verify'].includes(n.type)) },
   { name: '配置', cls: 'config', nodes: availableNodes.filter(n => ['model-config'].includes(n.type)) },
   { name: 'AI 处理', cls: 'ai', nodes: availableNodes.filter(n => ['ai-analyze','ai-analyze-seedance','video-generate'].includes(n.type)) },
   { name: '逻辑处理', cls: 'transform', nodes: availableNodes.filter(n => ['transform','condition'].includes(n.type)) },
@@ -531,7 +530,7 @@ function fieldLabel(key: string): string {
 
 function defaultConfig(nodeType: string): Record<string, unknown> {
   switch (nodeType) {
-    case 'fetch-tk':
+    case 'fetch-tk-playwright':
       return { keyword: '', maxCount: 20, sortBy: 'relevance', minPlays: 0, minLikes: 0, region: 'US', commerceSource: 'all', commerceOnly: false, autoDownload: false, videoDuration: 'all', publishTime: 'all' }
     case 'tk-account-verify':
       return { cookie: '', region: 'US' }
@@ -704,7 +703,7 @@ const FETCH_TK_GROUPS: ConfigGroup[] = [
   { name: '下载选项', keys: ['autoDownload'] },
 ]
 const GROUPS_BY_TYPE: Record<string, ConfigGroup[]> = {
-  'fetch-tk': FETCH_TK_GROUPS,
+  'fetch-tk-playwright': FETCH_TK_GROUPS,
   'tk-account-verify': [{ name: '账号配置', keys: ['cookie', 'region'] }],
   'model-config': [{ name: 'API 配置', keys: ['apiBaseUrl', 'apiKey'] }, { name: '模型选择', keys: ['model'] }],
   'condition': [{ name: '筛选条件', keys: ['field', 'operator', 'value'] }],
@@ -726,7 +725,7 @@ const configGroups = computed<ConfigGroup[]>(() => {
 // ===== 条件判断节点：根据上游节点类型动态生成字段选项 =====
 interface FieldOption { value: string; label: string }
 const FIELD_OPTIONS_BY_UPSTREAM: Record<string, FieldOption[]> = {
-  'fetch-tk': [
+  'fetch-tk-playwright': [
     { value: 'duration', label: '时长(秒)' },
     { value: 'plays', label: '播放量' },
     { value: 'likes', label: '点赞数' },

@@ -5,7 +5,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Workflow, WorkflowStatusEnum, NodeTypeEnum } from '@tk-workflow/types';
 import {
-  FetchTKVideoNode,
+  FetchTKPlaywrightNode,
   TikTokAccountVerifyNode,
   ModelConfigNode,
   AIAnalyzeVideoNode,
@@ -136,6 +136,67 @@ export class WorkflowService {
 
   async getExecutionHistory(workflowId: string): Promise<ExecutionEntity[]> {
     return this.executionRepo.find({ where: { workflowId }, order: { startedAt: 'DESC' } });
+  }
+
+  // ---------- 跨工作流记录汇总（含调试记录），供「记录」面板使用 ----------
+  async getAllRecords(limit = 200): Promise<
+    Array<{
+      id: string
+      workflowId: string
+      workflowName: string
+      kind: 'run' | 'debug'
+      status: string
+      progress: number
+      error?: string | null
+      startedAt?: Date
+      completedAt?: Date | null
+      nodes: Array<{ nodeId: string; type: string; summary: string }>
+      result: Record<string, unknown>
+    }>
+  > {
+    const [execs, workflows] = await Promise.all([
+      this.executionRepo.find({ order: { startedAt: 'DESC' }, take: limit }),
+      this.workflowRepo.find(),
+    ]);
+    const nameMap = new Map(workflows.map((w) => [w.id, w.name]));
+
+    return execs.map((e) => {
+      const result = (e.result || {}) as Record<string, unknown>;
+      // 提取每个节点的输出摘要
+      const nodes: Array<{ nodeId: string; type: string; summary: string }> = [];
+      for (const [nodeId, output] of Object.entries(result)) {
+        const o = output as any;
+        const type = o?.config?.type
+          || (typeof nodeId === 'string' && nodeId.includes('_') ? nodeId.split('_')[0] : nodeId);
+        let summary = '完成';
+        if (o && typeof o === 'object') {
+          if (Array.isArray(o.videos)) summary = `抓到 ${o.videos.length} 条视频`;
+          else if (Array.isArray(o.analyses)) summary = `分析 ${o.analyses.length} 条视频`;
+          else if (o.success === true) summary = '成功';
+          else if (o.success === false) summary = '失败';
+        }
+        nodes.push({ nodeId, type, summary });
+      }
+      return {
+        id: e.id,
+        workflowId: e.workflowId,
+        workflowName: nameMap.get(e.workflowId) || e.workflowId,
+        kind: e.id.startsWith('debug_') ? 'debug' : 'run',
+        status: e.status,
+        progress: e.progress,
+        error: e.error,
+        startedAt: e.startedAt,
+        completedAt: e.completedAt,
+        nodes,
+        result,
+      };
+    });
+  }
+
+  // ---------- 删除单条执行记录 ----------
+  async removeExecution(execId: string): Promise<{ ok: boolean }> {
+    await this.executionRepo.delete(execId);
+    return { ok: true };
   }
 
   // ---------- 保存某次分析结果的编辑 ----------
@@ -283,8 +344,8 @@ export class WorkflowService {
   /** 按节点类型实例化节点（用于隔离调试） */
   private createNodeInstance(type: string): BaseNode | null {
     switch (type) {
-      case NodeTypeEnum.FETCH_TK:
-        return new FetchTKVideoNode();
+      case NodeTypeEnum.FETCH_TK_PLAYWRIGHT:
+        return new FetchTKPlaywrightNode();
       case NodeTypeEnum.TK_ACCOUNT_VERIFY:
         return new TikTokAccountVerifyNode();
       case NodeTypeEnum.MODEL_CONFIG:

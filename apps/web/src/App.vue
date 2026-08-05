@@ -5,6 +5,7 @@
       <div class="nav-links">
         <router-link to="/">Dashboard</router-link>
         <router-link to="/workflow">工作流</router-link>
+        <router-link to="/records">记录</router-link>
         <router-link to="/tasks">任务</router-link>
         <router-link to="/settings">设置</router-link>
       </div>

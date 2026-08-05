@@ -13,7 +13,7 @@
     "@tk-workflow/types": "*",
     "@tk-workflow/core": "*",
     "@tk-workflow/providers": "*",
-    "@ybd-project/x-bogus": "^1.0.4"
+    "playwright": "^1.47.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

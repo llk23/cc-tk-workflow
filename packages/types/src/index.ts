@@ -45,7 +45,7 @@ export interface TriggerConfig {
 
 /** 节点类型枚举 */
 export enum NodeTypeEnum {
-  FETCH_TK = 'fetch-tk',
+  FETCH_TK_PLAYWRIGHT = 'fetch-tk-playwright',
   TK_ACCOUNT_VERIFY = 'tk-account-verify',
   MODEL_CONFIG = 'model-config',
   AI_ANALYZE = 'ai-analyze',

@@ -14,6 +14,8 @@ export const workflowApi = {
   execute: (id: string) => api.post(`/workflows/${id}/execute`),
   debug: (id: string, nodeId: string) => api.post(`/workflows/${id}/debug`, { nodeId }),
   history: (id: string) => api.get(`/workflows/${id}/history`),
+  records: () => api.get('/workflows/records'),
+  removeRecord: (execId: string) => api.delete(`/workflows/records/${execId}`),
 }
 
 export const taskApi = {

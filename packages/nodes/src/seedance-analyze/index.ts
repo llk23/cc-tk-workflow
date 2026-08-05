@@ -158,10 +158,11 @@ export class SeedanceAnalyzeNode extends BaseNode {
    *  你可以在下面自由增删输出要求，比如加"目标受众分析"、"竞品对比"等。
    */
   private buildSystemPrompt(skill: string, customPrompt: string): string {
-    return `你是即梦 Seedance 2.0 专业提示词工程师。分析这个视频，输出完整的视频分析报告 + 可直接在 Seedance 2.0 中使用的复刻提示词。
+    return `
+    你是即梦 Seedance 2.0 专业提示词工程师。
+    依据这份指南${skill || ''}分析这个视频，输出完整的视频分析报告 + 可直接在 Seedance 2.0 中使用的复刻提示词。
 
-## 工作指南
-${skill || ''}
+
 
 ## 输出要求
 ### 第一部分：视频分析报告

@@ -16,6 +16,18 @@ export class WorkflowController {
     return this.workflowService.findAll();
   }
 
+  // 跨工作流记录汇总（含调试记录），供「记录」面板使用
+  @Get('records')
+  async records() {
+    return this.workflowService.getAllRecords();
+  }
+
+  // 删除单条执行记录（运行或调试记录）
+  @Delete('records/:execId')
+  async removeRecord(@Param('execId') execId: string) {
+    return this.workflowService.removeExecution(execId);
+  }
+
   @Get(':id')
   async get(@Param('id') id: string) {
     return this.workflowService.findOne(id);

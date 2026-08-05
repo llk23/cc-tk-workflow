@@ -19,7 +19,7 @@
 
       <!-- fetch-tk：历史展开按钮 -->
       <button
-        v-if="data.nodeType === 'fetch-tk'"
+        v-if="data.nodeType === 'fetch-tk-playwright'"
         class="wf-history-btn"
         @click.stop="toggleHistory"
         :title="historyOpen ? '收起历史' : '查看历史抓取记录'"
@@ -109,7 +109,7 @@
                   <span class="ai-vid-score" :class="scoreClass(a.qualityScore)">{{ a.qualityScore }}</span>
                   <span class="ai-vid-score" :class="scoreClass(a.hookRating)">钩{{ a.hookRating }}</span>
                   <span class="ai-vid-label">{{ a.styleCategory?.split('|')[0] || 'other' }}</span>
-                  <span class="ai-vid-stats">▶ {{ fmtNum(a.plays) }} · ❤ {{ fmtNum(a.likes) }}</span>
+                  <span class="ai-vid-stats">▶ {{ fmtNum(a.plays ?? 0) }} · ❤ {{ fmtNum(a.likes ?? 0) }}</span>
                 </div>
                 <!-- 作者 -->
                 <div class="ai-vid-author" v-if="a.author">@{{ a.author }}</div>
@@ -159,7 +159,7 @@
                   <span class="ai-vid-score" :class="scoreClass(a.qualityScore)">{{ a.qualityScore }}</span>
                   <span class="ai-vid-score" :class="scoreClass(a.hookRating)">钩{{ a.hookRating }}</span>
                   <span class="ai-vid-label">{{ a.styleCategory?.split('|')[0] || 'other' }}</span>
-                  <span class="ai-vid-stats">▶ {{ fmtNum(a.plays) }} · ❤ {{ fmtNum(a.likes) }}</span>
+                  <span class="ai-vid-stats">▶ {{ fmtNum(a.plays ?? 0) }} · ❤ {{ fmtNum(a.likes ?? 0) }}</span>
                 </div>
                 <div class="ai-vid-author" v-if="a.author">@{{ a.author }}</div>
                 <div class="ai-vid-desc" v-if="a.description">{{ truncate(a.description, 60) }}</div>
@@ -186,7 +186,7 @@ const props = defineProps<{ data: any; id: string }>()
 const openAnalysisDetail = inject<(video: any, allAnalyses: any[], index: number) => void>('openAnalysisDetail', () => {})
 
 const iconMap: Record<string, string> = {
-  'fetch-tk': '📥',
+  'fetch-tk-playwright': '🌐',
   'tk-account-verify': '🔐',
   'ai-analyze': '🧠',
   'ai-analyze-seedance': '🎯',
@@ -280,6 +280,14 @@ const aiRecords = ref<Array<{
     suggestions: string[]
     generatedTags: string[]
     rawOutput?: string
+    author?: string
+    description?: string
+    plays?: number
+    likes?: number
+    comments?: number
+    duration?: number
+    coverUrl?: string
+    isCommerce?: boolean
   }>
   _open: boolean
 }>>([])
@@ -511,7 +519,7 @@ function formatTime(iso: string): string {
 }
 
 /* 类型色彩编码 */
-.wf-type-fetch-tk { border-left: 3px solid #4a90d9; }
+.wf-type-fetch-tk-playwright { border-left: 3px solid #4a90d9; }
 .wf-type-tk-account-verify { border-left: 3px solid #4a90d9; }
 .wf-type-ai-analyze { border-left: 3px solid #7b61ff; }
 .wf-type-ai-analyze-seedance { border-left: 3px solid #f59e0b; }

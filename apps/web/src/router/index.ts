@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from '@/views/Dashboard.vue'
 import WorkflowEditor from '@/views/WorkflowEditor.vue'
 import TaskList from '@/views/TaskList.vue'
+import Records from '@/views/Records.vue'
 import Settings from '@/views/Settings.vue'
 
 export const router = createRouter({
@@ -9,6 +10,7 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'dashboard', component: Dashboard },
     { path: '/workflow', name: 'workflow', component: WorkflowEditor },
+    { path: '/records', name: 'records', component: Records },
     { path: '/tasks', name: 'tasks', component: TaskList },
     { path: '/settings', name: 'settings', component: Settings },
   ],
