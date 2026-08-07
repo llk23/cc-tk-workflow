@@ -208,6 +208,168 @@ if (autoDownload && videos.length > 0) {
 }
 ```
 
+### 6. 外部 Agent 调用模式（WorkBuddyAgentAnalyzeNode）
+
+通过 `execFile` 调起 WorkBuddy 自带 CLI（`codebuddy`，随 WorkBuddy 安装自带，无需下载），让 Agent 自主发现并使用项目内 skills 分析视频。参考实现：`packages/nodes/src/workbuddy-agent-analyze/index.ts`。
+
+```typescript
+import { execFile } from 'child_process';
+
+// CLI 路径自动探测（留空即用默认）
+const DEFAULT_CLI_CANDIDATES = [
+  'D:/workbuddy/resources/app.asar.unpacked/cli/dist/codebuddy.js',  // node 脚本，用 node 执行
+  'D:/workbuddy/resources/app.asar.unpacked/cli/bin/codebuddy',
+];
+const DEFAULT_NODE_CANDIDATES = [
+  'C:/Users/Administrator/.workbuddy/binaries/node/versions/22.22.2/node.exe',
+  'C:/Program Files/nodejs/node.exe',
+];
+
+// 调起 CLI（注意参数顺序坑：--add-dir 会吞掉其后的所有参数，prompt 必须放前面）
+const args = [
+  cliPath,
+  '-p',                        // 非交互，输出即退出
+  '--output-format', 'json',   // 结构化返回
+  '--permission-mode', 'bypassPermissions',  // acceptEdits 读不了外部视频路径
+  taskPrompt,                  // ⚠️ prompt 必须在 --add-dir 之前
+  '--add-dir', videoDir,
+];
+if (model) args.push('--model', model);
+
+execFile(nodePath, args, { timeout: 300000, maxBuffer: 64 * 1024 * 1024, cwd: projectRoot }, (err, stdout) => {
+  // cwd 必须是项目根：Agent 在此发现 .claude/skills/seedance-2.0-main
+  // stdout 是 JSON 消息数组，取最后一条 type=result 的 result 字段为最终输出
+});
+```
+
+**关键点（踩坑记录）**：
+- `--add-dir` 会吞掉其后所有参数 → prompt 必须放在它之前
+- 权限必须 `bypassPermissions`（`acceptEdits` 无法读取外部视频，Agent 会拒绝并遵循 SKILL.md「不得虚构观察」原则）
+- CLI 与 WorkBuddy 桌面共享配置/模型网关/账号积分；换账号不影响 CLI 路径（路径由安装位置决定）
+- `--model <id>` 可指定模型；不指定走 `auto` 网关自动路由
+- 模型列表来源：CLI 安装目录 `product.json` 的 `models` 字段（后端 `POST /api/ai/workbuddy-models` 封装）
+
+### 7. AI 分析节点模式（SeedanceAnalyzeNode）
+
+即梦 Seedance 2.0 视频分析节点（`ai-analyze-seedance`），把本地 Skill 的完整指南注入 AI 模型 System Prompt，让模型输出**完整分析报告 + 可复刻的 Seedance 提示词**。参考实现：`packages/nodes/src/seedance-analyze/index.ts`。
+
+#### 数据流
+
+```
+TK 视频 URL → yt-dlp 下载 → 优先 Ark Files 上传完整视频
+                              └─ 失败回退 ffmpeg 抽帧(10帧)
+→ AI 模型（System Prompt = seedance-prompt-zh 技能全文 + 输出要求）
+→ rawOutput（Markdown 分析报告全文）
+```
+
+#### 技能加载模式（读文件而非"调用"Skill）
+
+WorkBuddy Skill 无法在 Node.js 后端直接调用，但 Skill 本质是 Markdown 文件，运行时读取并注入 System Prompt 即可等效使用：
+
+```typescript
+private loadSkill(): string {
+  // 候选路径（用户级 skills 目录 → 项目内嵌兜底）
+  const candidates = [
+    path.join(process.env.USERPROFILE || 'C:/Users/Administrator',
+      '.workbuddy', 'skills', 'seedance-prompt-en', 'zh', 'SKILL.md'),
+    // ...
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8');
+  }
+  return '';
+}
+```
+
+#### System Prompt 设计（⚠️ 重要踩坑）
+
+**不要用 JSON schema 约束输出**。历史教训：早期版本要求模型按 `{visual:{...}, structure:{...}}` 固定结构输出，模型只会"填表"，产出极其简陋；改成自由报告后模型才会写出帧级拆解、技术参数、卖点提炼等完整内容。
+
+正确做法（当前版本）：
+
+```
+你是即梦 Seedance 2.0 专业提示词工程师。分析这个视频，输出完整的视频分析报告
++ 可直接在 Seedance 2.0 中使用的复刻提示词。
+
+## 工作指南
+[seedance-prompt-zh SKILL.md 全文]
+
+## 输出要求
+### 第一部分：视频分析报告
+1. 基本信息（时长/分辨率/帧率/音轨格式/水印/视频类型）
+2. 帧级时间轴分镜拆解（精确到秒：画面内容/镜头运镜/音效对白）
+3. 核心卖点提炼（3-5 条按重要性排序）
+4. 视觉风格分析（色调/质感/氛围/剪辑节奏）
+### 第二部分：Seedance 2.0 复刻提示词
+@引用说明 / 分时段描述 / 主体场景运镜音频 / 生成参数建议
+
+注意：输出不是 JSON，是一份可直接阅读的分析报告。写详细、写完整。
+```
+
+**不要设计评分体系**（qualityScore/hookRating 等被业务明确否决——不符合运营预期）。
+
+#### 输出字段（最终版）
+
+```typescript
+// analyzeSingle 返回
+{
+  videoId,              // 视频 ID
+  rawOutput,            // AI 完整分析报告（核心数据，Markdown 全文）
+  analyzedAt,           // 分析时间
+  modelUsed,            // 使用的模型
+}
+// execute 合并视频元数据
+{
+  author, description, plays, likes, comments, duration,
+  coverUrl, isCommerce, hashtags,   // hashtags 来自抓取节点（原作者真实话题）
+}
+```
+
+**已删除的死字段**：`qualityScore`、`hookRating`、`styleCategory`、`captionStructure`、`targetAudience`、`suggestions`、`generatedTags`。
+
+**死字段成因**（避免重蹈覆辙）：System Prompt 从"JSON 结构化输出"改成"自由报告"后，代码里 `JSON.parse(raw)` 解析逻辑失效（模型不再返回 JSON），`parsed.xxx` 全部取不到 → 字段永远落默认值。改 System Prompt 时必须同步清理 return 字段。
+
+#### hashtags 来源约定
+
+标签不用 AI 生成（AI 猜的标签不准），改用**原作者真实发布的话题**，从抓取节点携带：
+
+```typescript
+// fetch/playwright.ts — API 路径（TikTok 响应的 challenges 字段）
+hashtags: (item.challenges || []).map((c: any) => (c?.title || '').replace(/^#/, '')).filter(Boolean),
+// fetch/playwright.ts — DOM 兜底路径（从描述提取 #tag）
+hashtags: ((descEl?.textContent?.match(/#[\w]+/g) || []) as string[]).map(t => t.replace(/^#/, '')),
+```
+
+#### 视频上传 → 抽帧回退模式
+
+完整视频优先上传 Ark Files API（模型能看全视频，分析更准）；上传失败自动回退 ffmpeg 抽帧（不阻塞主流程）：
+
+```typescript
+try {
+  raw = await this.analyzeWithFullVideo(...);   // multipart 上传 + ark://fileId 引用
+} catch (upErr) {
+  ctx.logger(`⚠️ 视频上传不可用，回退到抽帧: ${upErr.message}`);
+  raw = await this.analyzeWithFrames(...);      // ffmpeg fps=时长/10 抽 10 帧
+}
+```
+
+已知限制：Ark Files API 目前报 `Purpose must be one of [use...]`（purpose 参数校验不通过），实际运行总是走抽帧回退。
+
+#### 前端集成（Lv2 卡片 + Lv3 报告弹窗）
+
+- **Lv2 卡片**（CustomNode.vue）：封面占位 + 作者 + ▶播放/❤点赞 + 描述摘要 + 前 3 个 hashtags 标签；点击卡片 → 打开报告弹窗（不再显示评分徽标）
+- **Lv3 报告弹窗**（WorkflowEditor.vue）：可拖拽、可关闭，`<pre>` 原样铺开 `rawOutput` 全文（技术参数表、分镜表、卖点、复刻提示词）。不引入 Markdown 渲染库，纯文本展示
+- 数据传递：`provide('openSeedanceReport', ...)` → 子组件 `inject` 调用
+- 历史记录加载：按节点 `props.id` 精确匹配 `allResults[props.id]`，**不允许 fallback 抓取其他节点结果**（历史教训：宽松 fallback 会把 AI 分析节点的历史串到 SD 节点上）
+
+#### 注册清单（新节点要改的全部位置）
+
+1. `packages/types/src/index.ts` — `NodeTypeEnum` 加 `AI_ANALYZE_SEEDANCE`
+2. `packages/nodes/src/index.ts` — 导出 + `registerBuiltinNodes` 注册
+3. `apps/server/src/modules/workflow/workflow.service.ts` — `createNodeInstance` switch 加 case
+4. `apps/web/src/views/WorkflowEditor.vue` — 节点库列表、iconMap、defaultConfig、GROUPS_BY_TYPE、report 弹窗 + provide
+5. `apps/web/src/components/CustomNode.vue` — iconMap、边框色、展开按钮、Lv2 卡片
+
 ## 前端集成
 
 修改 `apps/web/src/views/WorkflowEditor.vue`：

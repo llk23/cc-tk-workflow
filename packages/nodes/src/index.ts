@@ -7,8 +7,10 @@ export type { NodeDefinition, NodeExecutionContext } from './base/base-node';
 export { FetchTKPlaywrightNode } from './fetch/playwright';
 export { TikTokAccountVerifyNode } from './fetch/account';
 export { ModelConfigNode } from './model-config';
+export { SkillConfigNode } from './skill-config';
 export { AIAnalyzeVideoNode } from './analyze';
 export { SeedanceAnalyzeNode } from './seedance-analyze';
+export { WorkbuddyAgentAnalyzeNode } from './workbuddy-agent-analyze';
 export { VideoGenerateNode } from './generate';
 export { TransformNode } from './transform';
 export { ConditionNode } from './condition';
@@ -18,8 +20,10 @@ import { NodeExecutor } from '@tk-workflow/core';
 import { FetchTKPlaywrightNode } from './fetch/playwright';
 import { TikTokAccountVerifyNode } from './fetch/account';
 import { ModelConfigNode } from './model-config';
+import { SkillConfigNode } from './skill-config';
 import { AIAnalyzeVideoNode } from './analyze';
 import { SeedanceAnalyzeNode } from './seedance-analyze';
+import { WorkbuddyAgentAnalyzeNode } from './workbuddy-agent-analyze';
 import { VideoGenerateNode } from './generate';
 import { TransformNode } from './transform';
 import { ConditionNode } from './condition';
@@ -34,8 +38,10 @@ export function registerBuiltinNodes(executor: typeof NodeExecutor): void {
     new FetchTKPlaywrightNode(),
     new TikTokAccountVerifyNode(),
     new ModelConfigNode(),
+    new SkillConfigNode(),
     new AIAnalyzeVideoNode(),
     new SeedanceAnalyzeNode(),
+    new WorkbuddyAgentAnalyzeNode(),
     new VideoGenerateNode(),
     new TransformNode(),
     new ConditionNode(),

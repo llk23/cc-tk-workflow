@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { WorkflowService } from './workflow.service';
 import { Workflow } from '@tk-workflow/types';
 
@@ -57,8 +57,15 @@ export class WorkflowController {
   }
 
   @Get(':id/history')
-  async history(@Param('id') id: string) {
-    return this.workflowService.getExecutionHistory(id);
+  async history(@Param('id') id: string, @Query('limit') limit?: string) {
+    const n = limit ? parseInt(limit, 10) : 20;
+    return this.workflowService.getExecutionHistory(id, isNaN(n) ? 20 : Math.min(n, 100));
+  }
+
+  // 单条执行完整记录（含完整 rawOutput，供报告全文弹窗使用）
+  @Get(':id/history/:execId')
+  async historyOne(@Param('id') id: string, @Param('execId') execId: string) {
+    return this.workflowService.getExecutionById(id, execId);
   }
 
   // 保存某次分析结果的编辑（如修改 generationPrompt）

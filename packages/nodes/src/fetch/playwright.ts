@@ -1,6 +1,53 @@
 import { BaseNode, NodeDefinition, NodeExecutionContext } from '../base/base-node';
 import { NodeConfig, NodeTypeEnum } from '@tk-workflow/types';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * 清理 Chrome profile 残留锁文件。
+ * 完整工作流中多个节点串行启动同一 user-data-dir，若上一个 Chrome 未完全退出，
+ * 会残留 SingletonLock/SingletonSocket 等锁文件，导致下一个 launch 秒退
+ * （错误特征：Target page, context or browser has been closed / exitCode=21）。
+ */
+function cleanChromeLocks(userDataDir: string): void {
+  try {
+    const lockNames = ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'DevToolsActivePort'];
+    for (const name of lockNames) {
+      const p = path.join(userDataDir, name);
+      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch {}
+    }
+  } catch { /* 忽略清理失败 */ }
+}
+
+/** 启动持久化浏览器上下文：先清锁，失败重试一次 */
+async function launchContext(userDataDir: string): Promise<BrowserContext> {
+  cleanChromeLocks(userDataDir);
+  try {
+    return await chromium.launchPersistentContext(userDataDir, {
+      channel: 'chrome',
+      headless: process.env.TK_HEADLESS !== 'false',
+      viewport: { width: 1280, height: 900 },
+      userAgent: UA,
+      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+    });
+  } catch (e: any) {
+    // 可能是锁未释放：等 2 秒再清一次锁并重试
+    ctx_sleep(2000);
+    cleanChromeLocks(userDataDir);
+    return chromium.launchPersistentContext(userDataDir, {
+      channel: 'chrome',
+      headless: process.env.TK_HEADLESS !== 'false',
+      viewport: { width: 1280, height: 900 },
+      userAgent: UA,
+      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+    });
+  }
+}
+
+function ctx_sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 /**
  * TK 视频抓取节点（Playwright 进程内版 · 替代原 CDP 方案）
@@ -43,6 +90,7 @@ function extractVideosFromItems(items: any[]): any[] {
           ? downloadAddr
           : downloadAddr?.UrlList?.[0] || playUrl,
       createTime: item.createTime || 0,
+      hashtags: (item.challenges || []).map((c: any) => (c?.title || '').replace(/^#/, '')).filter(Boolean),
       isCommerce:
         !!(item.siECVideo === true || item.siECVideo === 1) ||
         !!(item.commerceInfo?.productInfo || item.commerceInfo?.productInfos?.length) ||
@@ -114,15 +162,20 @@ export class FetchTKPlaywrightNode extends BaseNode {
     }
 
     // 从上游节点获取 Cookie（由 TK 账号验证节点传入）
-    const cookie = (input && typeof input === 'object')
-      ? (() => {
-          const values = Object.values(input as Record<string, any>);
-          for (const v of values) {
-            if (v && typeof v === 'object' && v.cookie) return String(v.cookie).trim();
-          }
-          return '';
-        })()
-      : '';
+    // 兼容两种格式：
+    //   平铺: { valid, username, cookie, ... }   （调试链路上游直出）
+    //   嵌套: { sourceId: { cookie, ... } }      （引擎 collectNodeInput）
+    const cookie = (() => {
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return '';
+      const obj = input as Record<string, any>;
+      if (typeof obj.cookie === 'string' && obj.cookie.trim()) return obj.cookie.trim();
+      for (const v of Object.values(obj)) {
+        if (v && typeof v === 'object' && typeof v.cookie === 'string' && v.cookie.trim()) {
+          return String(v.cookie).trim();
+        }
+      }
+      return '';
+    })();
 
     ctx.logger(`[TK抓取·Playwright] 关键词="${keyword}" 最大${maxCount}条 地区=${region} 带货=${commerceOnly ? '仅带货' : '全部'}`);
 
@@ -138,13 +191,7 @@ export class FetchTKPlaywrightNode extends BaseNode {
       ctx.onProgress(10);
       // 使用本机 Chrome（channel: 'chrome'），持久化上下文便于保留登录态
       const userDataDir = process.env.PLAYWRIGHT_USER_DATA_DIR || '.cache/playwright-tk';
-      context = await chromium.launchPersistentContext(userDataDir, {
-        channel: 'chrome',
-        headless: process.env.TK_HEADLESS !== 'false',
-        viewport: { width: 1280, height: 900 },
-        userAgent: UA,
-        args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
-      });
+      context = await launchContext(userDataDir);
       page = await context.newPage();
       ctx.logger('✅ 浏览器已在进程内启动（本机 Chrome）');
 
@@ -272,6 +319,7 @@ export class FetchTKPlaywrightNode extends BaseNode {
                   url: href.startsWith('http') ? href : 'https://www.tiktok.com' + href,
                   plays: nums[0] || 0,
                   likes: nums[1] || 0,
+                  hashtags: ((descEl?.textContent?.match(/#[\w]+/g) || []) as string[]).map((t: string) => t.replace(/^#/, '')),
                   isCommerce: false,
                   commerceSignal: {},
                 });

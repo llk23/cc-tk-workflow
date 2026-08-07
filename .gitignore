@@ -40,6 +40,14 @@ coverage/
 tmp/
 temp/
 .cache/
+.cache_frames/
+.tmp_frames/
+.tmp_video_analysis/
+.analysis-tmp/
+.vidtmp/
+
+# Build 产物（vite dist 清理被拦截时重命名的旧目录）
+dist_old_*/
 
 # 本地种子工作流（含登录 Cookie，禁止提交）
 apps/web/public/seed/

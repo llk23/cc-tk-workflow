@@ -8,8 +8,10 @@ import {
   FetchTKPlaywrightNode,
   TikTokAccountVerifyNode,
   ModelConfigNode,
+  SkillConfigNode,
   AIAnalyzeVideoNode,
   SeedanceAnalyzeNode,
+  WorkbuddyAgentAnalyzeNode,
   VideoGenerateNode,
   TransformNode,
   ConditionNode,
@@ -134,8 +136,82 @@ export class WorkflowService {
     await this.executionRepo.update(id, patch as any);
   }
 
-  async getExecutionHistory(workflowId: string): Promise<ExecutionEntity[]> {
-    return this.executionRepo.find({ where: { workflowId }, order: { startedAt: 'DESC' } });
+  /**
+   * 执行历史（列表用，轻量）
+   * - 默认取最近 20 条（可 limit 覆盖）
+   * - SQL 层用 SUBSTRING 截断 result 大字段（单条最多 500KB），避免 17MB 级巨型报告
+   *   全量传输导致接口耗时十几秒
+   * - 巨型记录（截断后 JSON 解析失败）标记 _truncatedRecord=true，前端点击批次时
+   *   按需调 getExecutionById 加载完整记录
+   */
+  async getExecutionHistory(workflowId: string, limit = 20): Promise<any[]> {
+    const n = Math.max(1, Math.min(limit, 100));
+    const rows: any[] = await this.executionRepo.query(
+      `SELECT id, [workflowId], status, progress, error, startedAt, completedAt,
+              SUBSTRING(CONVERT(nvarchar(max), result), 1, 500000) AS result_trunc,
+              LEN(CONVERT(nvarchar(max), result)) AS result_len
+       FROM executions
+       WHERE [workflowId] = @0
+       ORDER BY startedAt DESC
+       OFFSET 0 ROWS FETCH NEXT ${n} ROWS ONLY`,
+      [workflowId],
+    );
+
+    return (rows || []).map((r: any) => {
+      const base = {
+        id: r.id,
+        workflowId: r.workflowId,
+        status: r.status,
+        progress: r.progress,
+        error: r.error,
+        startedAt: r.startedAt,
+        completedAt: r.completedAt,
+        resultLength: Number(r.result_len) || 0,
+      };
+      let parsed: Record<string, unknown> = {};
+      let ok = false;
+      if (r.result_trunc) {
+        try {
+          parsed = JSON.parse(r.result_trunc);
+          ok = true;
+        } catch {
+          ok = false;
+        }
+      }
+      if (!ok) {
+        // 巨型记录：截断的 JSON 解析失败，标记让前端按需加载完整
+        return { ...base, result: {}, _truncatedRecord: true };
+      }
+      return { ...base, result: this.summarizeResult(parsed) };
+    });
+  }
+
+  /** 单条执行完整记录（含完整 rawOutput，供查看报告全文） */
+  async getExecutionById(workflowId: string, execId: string): Promise<ExecutionEntity | null> {
+    return this.executionRepo.findOne({ where: { id: execId, workflowId } });
+  }
+
+  /** 摘要化 result：截断 analyses 的 rawOutput，保留元数据与长度 */
+  private summarizeResult(result: Record<string, unknown>): Record<string, unknown> {
+    const clone: Record<string, unknown> = {};
+    for (const [nodeId, out] of Object.entries(result || {})) {
+      if (out && typeof out === 'object' && Array.isArray((out as any).analyses)) {
+        const o = { ...(out as any) } as any;
+        o.analyses = ((out as any).analyses || []).map((a: any) => {
+          const { rawOutput, ...rest } = a || {};
+          return {
+            ...rest,
+            rawOutput: String(rawOutput || '').slice(0, 800),
+            rawOutputLength: String(rawOutput || '').length,
+            _truncated: String(rawOutput || '').length > 800,
+          };
+        });
+        clone[nodeId] = o;
+      } else {
+        clone[nodeId] = out;
+      }
+    }
+    return clone;
   }
 
   // ---------- 跨工作流记录汇总（含调试记录），供「记录」面板使用 ----------
@@ -315,9 +391,12 @@ export class WorkflowService {
       const result = await inst.execute(upstreamNode.config || {}, upstreamInput, nodeCtx);
 
       if (result && typeof result === 'object') {
-        // 特殊处理：模型配置节点的输出包装为 modelConfig
-        if (upstreamNode.type === 'model-config') {
+        // 特殊处理：模型配置节点输出包装为 modelConfig，skill 节点输出包装为 skill
+        // （保留对象结构，供下游 inputObj.modelConfig / inputObj.skill 读取）
+        if (upstreamNode.type === NodeTypeEnum.MODEL_CONFIG) {
           upstreamOutputs.modelConfig = result;
+        } else if (upstreamNode.type === NodeTypeEnum.SKILL_CONFIG) {
+          upstreamOutputs.skill = result;
         } else {
           // 其他节点：按 source id 存入，下游可通过视频数据遍历
           upstreamOutputs[edge.source] = result;
@@ -329,10 +408,12 @@ export class WorkflowService {
     const keys = Object.keys(upstreamOutputs);
     if (keys.length === 0) return undefined;
     if (keys.length === 1) return upstreamOutputs[keys[0]];
-    // 多上游合并：拆解每个上游的输出平铺到根（避免嵌套在 nodeId 下）
+    // 多上游合并：modelConfig/skill 保留对象结构，其余拆解平铺到根
     const merged: Record<string, any> = {};
     for (const [key, output] of Object.entries(upstreamOutputs)) {
-      if (output && typeof output === 'object' && !Array.isArray(output)) {
+      if (key === 'modelConfig' || key === 'skill') {
+        merged[key] = output;
+      } else if (output && typeof output === 'object' && !Array.isArray(output)) {
         Object.assign(merged, output);
       } else {
         merged[key] = output;
@@ -350,10 +431,14 @@ export class WorkflowService {
         return new TikTokAccountVerifyNode();
       case NodeTypeEnum.MODEL_CONFIG:
         return new ModelConfigNode();
+      case NodeTypeEnum.SKILL_CONFIG:
+        return new SkillConfigNode();
       case NodeTypeEnum.AI_ANALYZE:
         return new AIAnalyzeVideoNode();
       case NodeTypeEnum.AI_ANALYZE_SEEDANCE:
         return new SeedanceAnalyzeNode();
+      case NodeTypeEnum.AI_ANALYZE_WORKBUDDY_AGENT:
+        return new WorkbuddyAgentAnalyzeNode();
       case NodeTypeEnum.VIDEO_GENERATE:
         return new VideoGenerateNode();
       case NodeTypeEnum.TRANSFORM:

@@ -93,6 +93,16 @@
                   placeholder="粘贴从浏览器 DevTools 复制的完整 Cookie 字符串"
                 ></textarea>
 
+                <!-- 分析要求模板：textarea（多行可编辑） -->
+                <textarea
+                  v-else-if="key === 'customPrompt' && selectedNode?.data.nodeType === 'ai-analyze-workbuddy-agent'"
+                  class="cfg-textarea"
+                  rows="8"
+                  :value="String((mergedConfig as any)[key] || '')"
+                  @input="onCfgInput(key, $event)"
+                  placeholder="输入你的分析要求模板，Agent 将按此执行"
+                ></textarea>
+
                 <label v-else-if="typeof (mergedConfig as any)[key] === 'boolean'" class="cfg-toggle">
                   <input type="checkbox" :checked="!!(mergedConfig as any)[key]" @change="onCfgBool(key, $event)" />
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
@@ -137,14 +147,67 @@
 
                 <input v-else-if="key === 'apiKey'" type="text" :value="String((mergedConfig as any)[key])" @input="onCfgInput(key, $event)" class="cfg-input" placeholder="sk- 或你的 API Key" />
 
-                <!-- 模型配置节点的 model 字段：显示获取模型列表按钮 + 下拉 -->
+                <!-- 模型配置节点的 model 字段：OpenAI 直调 + WorkBuddy Agent 双通道 -->
                 <template v-else-if="key === 'model' && selectedNode?.data.nodeType === 'model-config'">
                   <button class="cfg-fetch-btn" :disabled="fetchingModels" @click="onFetchModels">
-                    {{ fetchingModels ? '⏳ 获取中…' : '🔍 获取模型列表' }}
+                    {{ fetchingModels ? '⏳ 获取中…' : '🔍 获取 OpenAI 兼容模型' }}
+                  </button>
+                  <button class="cfg-fetch-btn" :disabled="fetchingWbModels" @click="onFetchWorkbuddyModels">
+                    {{ fetchingWbModels ? '⏳ 探测中…' : '🤖 探测 WorkBuddy 模型' }}
                   </button>
                   <select :value="String((mergedConfig as any)[key])" @change="onCfgSelect(key, $event)" class="cfg-select cfg-select-model">
-                    <option value="">-- 请先获取模型列表 --</option>
-                    <option v-for="m in fetchedModels" :key="m" :value="m">{{ m }}</option>
+                    <option value="">-- 请选择模型 --</option>
+                    <optgroup label="OpenAI 兼容模型">
+                      <option v-for="m in fetchedModels" :key="'o'+m" :value="m">{{ m }}</option>
+                    </optgroup>
+                    <optgroup label="WorkBuddy Agent 模型">
+                      <option v-for="m in wbModels" :key="'w'+m.id" :value="m.id">
+                        {{ m.name || m.id }}<template v-if="m.credits"> · {{ m.credits }}</template>
+                      </option>
+                      <option v-if="!wbModels.length" value="" disabled>（点击上方按钮探测）</option>
+                    </optgroup>
+                    <option
+                      v-if="(mergedConfig as any).model && !fetchedModels.includes((mergedConfig as any).model) && !wbModels.some(m => m.id === (mergedConfig as any).model)"
+                      :value="String((mergedConfig as any).model)">
+                      ⭐ {{ (mergedConfig as any).model }}（已保存）
+                    </option>
+                  </select>
+                </template>
+
+                <!-- 模型配置节点的 agentModel 字段：WorkBuddy Agent 专用模型（CLI 网关模型） -->
+                <template v-else-if="key === 'agentModel' && selectedNode?.data.nodeType === 'model-config'">
+                  <button class="cfg-fetch-btn" :disabled="fetchingWbModels" @click="onFetchWorkbuddyModels">
+                    {{ fetchingWbModels ? '⏳ 探测中…' : '🔍 探测可用模型' }}
+                  </button>
+                  <select :value="String((mergedConfig as any)[key])" @change="onCfgSelect(key, $event)" class="cfg-select cfg-select-model">
+                    <option value="">🤖 Auto（网关自动路由，推荐）</option>
+                    <option v-for="m in wbModels" :key="m.id" :value="m.id">
+                      {{ m.name || m.id }}<template v-if="m.credits"> · {{ m.credits }}</template><template v-if="m.supportsImages"> · 图</template><template v-if="m.supportsToolCall"> · 工具</template>
+                    </option>
+                    <option
+                      v-if="(mergedConfig as any).agentModel && !wbModels.some(m => m.id === (mergedConfig as any).agentModel)"
+                      :value="String((mergedConfig as any).agentModel)">
+                      ⭐ {{ (mergedConfig as any).agentModel }}（已保存）
+                    </option>
+                  </select>
+                </template>
+
+                <!-- WorkBuddy Agent 节点的 model 字段：探测可用模型按钮 + 下拉 -->
+                <template v-else-if="key === 'model' && selectedNode?.data.nodeType === 'ai-analyze-workbuddy-agent'">
+                  <button class="cfg-fetch-btn" :disabled="fetchingWbModels" @click="onFetchWorkbuddyModels">
+                    {{ fetchingWbModels ? '⏳ 探测中…' : '🔍 探测可用模型' }}
+                  </button>
+                  <select :value="String((mergedConfig as any)[key])" @change="onCfgSelect(key, $event)" class="cfg-select cfg-select-model">
+                    <option value="auto">🤖 Auto（网关自动路由，推荐）</option>
+                    <option v-for="m in wbModels" :key="m.id" :value="m.id">
+                      {{ m.name || m.id }}<template v-if="m.credits"> · {{ m.credits }}</template><template v-if="m.supportsImages"> · 图</template><template v-if="m.supportsToolCall"> · 工具</template>
+                    </option>
+                    <!-- 兜底：已保存的 model 值即使未探测也始终显示（刷新后不回退） -->
+                    <option
+                      v-if="(mergedConfig as any).model && (mergedConfig as any).model !== 'auto' && !wbModels.some(m => m.id === (mergedConfig as any).model)"
+                      :value="String((mergedConfig as any).model)">
+                      ⭐ {{ (mergedConfig as any).model }}（已保存）
+                    </option>
                   </select>
                 </template>
 
@@ -169,6 +232,18 @@
                   <option value="metadata">📊 元数据分析（文本，无需下载）</option>
                   <option value="video">🎬 全视频分析（上传视频给 AI 模型分析）</option>
                 </select>
+
+                <!-- Skill 配置节点：skill 下拉（自动拉取项目已装 skills） -->
+                <template v-else-if="key === 'skillName' && selectedNode?.data.nodeType === 'skill-config'">
+                  <select :value="String((mergedConfig as any)[key])" @change="onSkillSelect($event)" class="cfg-select">
+                    <option value="">-- 请选择 Skill --</option>
+                    <option v-for="s in skillOptions" :key="s.path" :value="s.name">
+                      {{ s.name }}<template v-if="s.description"> · {{ truncateDesc(s.description) }}</template>
+                    </option>
+                  </select>
+                  <div v-if="skillOptions.length === 0" class="cfg-hint">加载中…（自动扫描项目 .claude/skills）</div>
+                  <div v-else class="cfg-hint">共 {{ skillOptions.length }} 个 skill，选中后输出其内容给下游</div>
+                </template>
 
                 <input v-else type="text" :value="String((mergedConfig as any)[key])" @input="onCfgInput(key, $event)" class="cfg-input" />
               </div>
@@ -288,6 +363,24 @@
           </div>
         </div>
       </div>
+
+      <!-- SD2.0 / WorkBuddy Agent 分析报告全文弹窗 -->
+      <div v-if="reportVideo" class="report-modal" :style="reportStyle">
+        <div class="report-header" @mousedown.prevent="reportStartDrag">
+          <div class="report-hd-left">
+            <span class="report-title">{{ reportVideo?.modelUsed ? 'WorkBuddy Agent 分析报告' : 'SD2.0 分析报告' }}</span>
+            <span class="report-id">视频 #{{ reportIndex! + 1 }} · {{ reportVideo?.videoId?.slice(0, 10) }}…</span>
+            <span class="report-author" v-if="reportVideo?.author">@{{ reportVideo.author }}</span>
+            <span class="report-model" v-if="reportVideo?.modelUsed">📦 {{ reportVideo.modelUsed }}</span>
+          </div>
+          <button class="report-close" @click="reportVideo = null">✕</button>
+        </div>
+        <div class="report-body">
+          <!-- WorkBuddy Agent：rawOutput 是 CLI JSON 消息流，智能提取最终 result -->
+          <pre class="report-content" v-if="reportVideo?.rawOutput && reportVideo.rawOutput.trim().startsWith('[')">{{ workbuddyReportText }}</pre>
+          <pre class="report-content" v-else>{{ reportVideo?.rawOutput || '(无报告内容)' }}</pre>
+        </div>
+      </div>
     </div>
 
     <!-- 底部：执行日志 / 结果 -->
@@ -353,8 +446,10 @@ const iconMap: Record<string, string> = {
   'fetch-tk-playwright': '🌐',
   'tk-account-verify': '🔐',
   'model-config': '🤖',
+  'skill-config': '📚',
   'ai-analyze': '🧠',
   'ai-analyze-seedance': '🎯',
+  'ai-analyze-workbuddy-agent': '🤖',
   'video-generate': '🎬',
   transform: '🔄',
   condition: '🔀',
@@ -425,6 +520,68 @@ provide('openAnalysisDetail', (video: any, allAnalyses: any[], index: number) =>
   drawerSaveStatus.value = ''
 })
 
+// ===== SD2.0 报告全文弹窗 =====
+const reportVideo = ref<any>(null)
+const reportIndex = ref<number | null>(null)
+const reportPos = ref({ x: 80, y: 60 })
+const reportDragging = ref(false)
+const reportDragStart = ref({ x: 0, y: 0 })
+const reportDragOrigin = ref({ x: 0, y: 0 })
+const reportStyle = computed(() => ({
+  left: reportPos.value.x + 'px',
+  top: reportPos.value.y + 'px',
+}))
+
+function reportStartDrag(e: MouseEvent) {
+  reportDragging.value = true
+  reportDragStart.value = { x: e.clientX, y: e.clientY }
+  reportDragOrigin.value = { x: reportPos.value.x, y: reportPos.value.y }
+  document.addEventListener('mousemove', reportOnDrag)
+  document.addEventListener('mouseup', reportEndDrag)
+}
+function reportOnDrag(e: MouseEvent) {
+  if (!reportDragging.value) return
+  reportPos.value = {
+    x: reportDragOrigin.value.x + (e.clientX - reportDragStart.value.x),
+    y: reportDragOrigin.value.y + (e.clientY - reportDragStart.value.y),
+  }
+}
+function reportEndDrag() {
+  reportDragging.value = false
+  document.removeEventListener('mousemove', reportOnDrag)
+  document.removeEventListener('mouseup', reportEndDrag)
+}
+
+provide('openSeedanceReport', (video: any, allAnalyses: any[], index: number) => {
+  reportVideo.value = video
+  reportIndex.value = index
+})
+
+// WorkBuddy Agent 报告内容：CLI 返回 JSON 消息数组，提取最后一条 type=result 的 result 字段；
+// 解析失败（如截断的 JSON 片段）则显示友好提示，不展示原始乱码
+const workbuddyReportText = computed(() => {
+  const raw = reportVideo.value?.rawOutput
+  if (!raw) return '(无报告内容)'
+  try {
+    const arr = JSON.parse(raw)
+    if (Array.isArray(arr)) {
+      const results = arr.filter((m: any) => m?.type === 'result' && m?.result)
+      if (results.length) return results[results.length - 1].result
+      // 无 result 字段：取最后一条含文本的消息
+      const texts = arr.filter((m: any) => m?.type === 'text' && m?.text)
+      if (texts.length) return texts[texts.length - 1].text
+    }
+    return raw
+  } catch {
+    // JSON 解析失败：可能是截断片段（列表接口为省流量截断 rawOutput）
+    const fullLen = reportVideo.value?.rawOutputLength
+    if (fullLen && fullLen > raw.length) {
+      return `（报告内容已截断：${fullLen} 字符，当前仅加载摘要。请点击历史卡片重新打开以加载完整报告）`
+    }
+    return raw
+  }
+})
+
 async function saveDrawerPrompt() {
   const id = store.currentWorkflowId
   if (!id) return
@@ -475,9 +632,11 @@ function fmtNum(n: number): string {
 const availableNodes = [
   { type: 'fetch-tk-playwright', label: 'TK 视频抓取', icon: '🌐', description: 'Playwright 进程内浏览器抓取，无需外部 CDP 代理，支持带货判定与多种过滤' },
   { type: 'tk-account-verify', label: 'TK 账号验证', icon: '🔐', description: '校验 TikTok 登录 Cookie 是否有效' },
-  { type: 'model-config', label: 'AI 模型配置', icon: '🤖', description: '配置多模态分析模型（OpenAI 兼容接口）' },
+  { type: 'model-config', label: 'AI 模型配置', icon: '🤖', description: '配置 OpenAI 兼容模型 / WorkBuddy Agent 运行时参数' },
+  { type: 'skill-config', label: 'Skill 配置', icon: '📚', description: '选择项目已安装的 skill，输出其内容供下游使用' },
   { type: 'ai-analyze', label: 'AI 视频分析', icon: '🧠', description: '多模态 AI 分析' },
-  { type: 'ai-analyze-seedance', label: '视频分析(即梦SD2.0)', icon: '🎯', description: '加载Seedance2.0技能指南，输出SD2.0格式提示词' },
+  { type: 'ai-analyze-seedance', label: 'AI 多模态模型分析', icon: '🎯', description: '上传完整视频给多模态模型分析，输出自由格式分析报告 + Seedance 复刻提示词' },
+  { type: 'ai-analyze-workbuddy-agent', label: 'Agent 分析', icon: '🤖', description: '调起WorkBuddy Agent，使用上游选定的skill分析视频（配置来自上游模型配置节点）' },
   { type: 'video-generate', label: 'AI 视频生成', icon: '🎬', description: '生成新视频' },
   { type: 'transform', label: '数据转换', icon: '🔄', description: '格式转换/过滤' },
   { type: 'condition', label: '条件判断', icon: '🔀', description: '条件分支路由' },
@@ -488,8 +647,8 @@ const availableNodes = [
 interface PaletteCategory { name: string; cls: string; nodes: typeof availableNodes }
 const paletteCategories: PaletteCategory[] = [
   { name: '数据源', cls: 'input', nodes: availableNodes.filter(n => ['fetch-tk-playwright','tk-account-verify'].includes(n.type)) },
-  { name: '配置', cls: 'config', nodes: availableNodes.filter(n => ['model-config'].includes(n.type)) },
-  { name: 'AI 处理', cls: 'ai', nodes: availableNodes.filter(n => ['ai-analyze','ai-analyze-seedance','video-generate'].includes(n.type)) },
+  { name: '配置', cls: 'config', nodes: availableNodes.filter(n => ['model-config','skill-config'].includes(n.type)) },
+  { name: 'AI 处理', cls: 'ai', nodes: availableNodes.filter(n => ['ai-analyze','ai-analyze-seedance','ai-analyze-workbuddy-agent','video-generate'].includes(n.type)) },
   { name: '逻辑处理', cls: 'transform', nodes: availableNodes.filter(n => ['transform','condition'].includes(n.type)) },
   { name: '输出', cls: 'output', nodes: availableNodes.filter(n => ['output'].includes(n.type)) },
 ]
@@ -511,7 +670,8 @@ const FIELD_LABELS: Record<string, string> = {
   publishTime: '发布时间',
   apiBaseUrl: 'API 地址',
   apiKey: 'API Key',
-  model: '模型',
+  model: '模型（OpenAI 直调）',
+  agentModel: 'Agent 模型（CLI 网关）',
   provider: 'AI 供应商',
   analysisDimensions: '分析维度',
   customPrompt: '自定义分析指令（可选，例如：重点关注产品的包装方式）',
@@ -523,6 +683,13 @@ const FIELD_LABELS: Record<string, string> = {
   value: '阈值',
   tool: '生成工具',
   durationSec: '时长(秒)',
+  cliPath: 'WorkBuddy CLI 路径',
+  nodePath: 'Node 可执行路径',
+  useSeedanceSkill: '使用项目内 Seedance 技能',
+  workingDir: 'Agent 工作目录（项目根）',
+  permissionMode: '权限模式',
+  skillName: '选择 Skill',
+  skillPath: 'Skill 文件路径（自动）',
 }
 function fieldLabel(key: string): string {
   return FIELD_LABELS[key] || key
@@ -535,9 +702,13 @@ function defaultConfig(nodeType: string): Record<string, unknown> {
     case 'tk-account-verify':
       return { cookie: '', region: 'US' }
     case 'model-config':
-      return { apiBaseUrl: '', apiKey: '', model: '' }
+      return { apiBaseUrl: '', apiKey: '', model: '', agentModel: '', cliPath: '', nodePath: '', permissionMode: 'bypassPermissions', workingDir: '' }
+    case 'skill-config':
+      return { skillName: '', skillPath: '' }
     case 'ai-analyze-seedance':
       return { analysisMode: 'video', customPrompt: '' }
+    case 'ai-analyze-workbuddy-agent':
+      return { customPrompt: '分析这个本地视频文件，输出：\n1. 视频分析报告（画面、分镜、运镜、卖点、风格等）\n2. 可直接在 Seedance 2.0 中使用的复刻提示词' }
     case 'condition':
       return { field: 'duration', operator: 'gt', value: 30 }
     case 'ai-analyze':
@@ -705,7 +876,11 @@ const FETCH_TK_GROUPS: ConfigGroup[] = [
 const GROUPS_BY_TYPE: Record<string, ConfigGroup[]> = {
   'fetch-tk-playwright': FETCH_TK_GROUPS,
   'tk-account-verify': [{ name: '账号配置', keys: ['cookie', 'region'] }],
-  'model-config': [{ name: 'API 配置', keys: ['apiBaseUrl', 'apiKey'] }, { name: '模型选择', keys: ['model'] }],
+  'model-config': [
+    { name: 'OpenAI 直调（可选）', keys: ['apiBaseUrl', 'apiKey', 'model'] },
+    { name: 'WorkBuddy Agent 配置', keys: ['agentModel', 'cliPath', 'nodePath', 'permissionMode', 'workingDir'] },
+  ],
+  'skill-config': [{ name: 'Skill 选择', keys: ['skillName'] }],
   'condition': [{ name: '筛选条件', keys: ['field', 'operator', 'value'] }],
   'ai-analyze': [
     { name: '分析模式', keys: ['analysisMode'] },
@@ -714,6 +889,9 @@ const GROUPS_BY_TYPE: Record<string, ConfigGroup[]> = {
   'ai-analyze-seedance': [
     { name: 'Seedance 2.0 分析', keys: ['analysisMode'] },
     { name: '自定义分析指令', keys: ['customPrompt'] },
+  ],
+  'ai-analyze-workbuddy-agent': [
+    { name: '分析要求模板', keys: ['customPrompt'] },
   ],
   'video-generate': [{ name: '生成设置', keys: ['tool', 'durationSec'] }],
 }
@@ -763,6 +941,66 @@ const conditionFieldOptions = computed<FieldOption[]>(() => {
 const fetchedModels = ref<string[]>([])
 const fetchingModels = ref(false)
 
+// WorkBuddy Agent 节点的模型探测
+const wbModels = ref<Array<{ id: string; name?: string; credits?: string; supportsImages?: boolean; supportsToolCall?: boolean }>>([])
+const fetchingWbModels = ref(false)
+
+async function onFetchWorkbuddyModels() {
+  fetchingWbModels.value = true
+  wbModels.value = []
+  store.addLog('🔍 正在探测 WorkBuddy 可用模型...')
+  try {
+    const res = await fetch('/api/ai/workbuddy-models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const data = await res.json()
+    if (data.success && Array.isArray(data.models)) {
+      wbModels.value = data.models
+      store.addLog(`✅ 探测到 ${data.total} 个可用模型（来源: ${data.source || 'CLI 配置'}）`)
+    } else {
+      store.addLog('❌ 探测模型失败：' + (data.message || '未知错误'))
+    }
+  } catch (e: any) {
+    store.addLog(`❌ 探测模型失败：${e.message || e}`)
+  } finally {
+    fetchingWbModels.value = false
+  }
+}
+
+// ===== Skill 配置节点的 skill 列表 =====
+const skillOptions = ref<Array<{ name: string; path: string; description: string }>>([])
+
+async function loadSkillOptions() {
+  if (skillOptions.value.length > 0) return
+  try {
+    const res = await fetch('/api/ai/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const data = await res.json()
+    if (data.success && Array.isArray(data.skills)) {
+      skillOptions.value = data.skills
+    }
+  } catch { /* 静默失败，面板显示加载中 */ }
+}
+
+function truncateDesc(desc: string, len = 40): string {
+  return desc.length > len ? desc.slice(0, len) + '…' : desc
+}
+
+async function onSkillSelect(e: Event) {
+  if (!store.selectedNodeId) return
+  const sel = e.target as HTMLSelectElement
+  const name = sel.value
+  const hit = skillOptions.value.find((s) => s.name === name)
+  const node = findNode(store.selectedNodeId)
+  const config = { ...(node?.data.config || {}), skillName: name, skillPath: hit?.path || '' }
+  updateNodeData(store.selectedNodeId, { config })
+}
+
 async function onFetchModels() {
   const node = selectedNode.value
   if (!node) return
@@ -798,11 +1036,26 @@ async function onFetchModels() {
 
 // 当选中的节点是 model-config 且已有 apiBaseUrl/apiKey 时，自动获取模型列表
 watch(selectedNode, async (node) => {
-  if (!node || node.data?.nodeType !== 'model-config') return
-  const cfg = (node.data?.config || {}) as any
-  if (!cfg.apiBaseUrl || !cfg.apiKey) return
-  if (fetchedModels.value.length > 0) return // 已有缓存，不再重复获取
-  await onFetchModels()
+  if (!node) return
+  const t = node.data?.nodeType
+  if (t === 'model-config') {
+    const cfg = (node.data?.config || {}) as any
+    // OpenAI 直调场景：有 apiBaseUrl/apiKey 时自动获取
+    if (cfg.apiBaseUrl && cfg.apiKey && fetchedModels.value.length === 0) {
+      await onFetchModels()
+    }
+    // Agent 场景：有 cliPath 时自动探测 WorkBuddy 模型
+    if (cfg.cliPath && wbModels.value.length === 0) {
+      await onFetchWorkbuddyModels()
+    }
+  } else if (t === 'ai-analyze-workbuddy-agent') {
+    // 选中 WorkBuddy Agent 节点时自动探测模型，保证下拉候选齐全（刷新后不丢已选值）
+    if (wbModels.value.length > 0) return
+    await onFetchWorkbuddyModels()
+  } else if (t === 'skill-config') {
+    // 选中 Skill 配置节点时自动拉取项目 skills 列表
+    await loadSkillOptions()
+  }
 })
 
 // 配置面板输入写回节点 data
@@ -882,6 +1135,7 @@ async function save() {
     }
     const id = res.data.id
     store.currentWorkflowId = id
+    localStorage.setItem(LS_PREFIX + 'last_open', id)
     store.addLog('✅ 已保存到服务端：' + id)
   } catch (e: any) {
     const id =
@@ -895,7 +1149,37 @@ async function save() {
   refreshSavedList()
 }
 
+// ===================== 防抖自动保存 =====================
+// 监听画布 nodes 深度变化（拖动节点/修改配置），800ms 后自动同步到后端，
+// 避免"配置改了但忘记点保存，刷新后丢失"。
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+let autoSaveInFlight = false
+const nodesRaw = computed(() => JSON.stringify(nodes.value))
+
+watch(nodesRaw, async () => {
+  // 尚未创建过工作流（从未保存过）时不自动建库，避免画布一拖就自动生成空工作流
+  if (!store.currentWorkflowId) return
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(async () => {
+    if (autoSaveInFlight) return // 上一次保存未完成则跳过本次（下一轮变化会再触发）
+    autoSaveInFlight = true
+    const wfId = store.currentWorkflowId as string
+    try {
+      // 静默保存：不打印日志，避免刷屏
+      const payload = buildPayload()
+      await workflowApi.update(wfId, payload)
+    } catch {
+      try {
+        await save() // 服务端失败走 save() 的本地兜底
+      } catch { /* ignore */ }
+    } finally {
+      autoSaveInFlight = false
+    }
+  }, 800)
+})
+
 async function load(id: string) {
+  localStorage.setItem(LS_PREFIX + 'last_open', id)
   try {
     const res = await workflowApi.get(id)
     applyWorkflow(res.data)
@@ -1039,6 +1323,7 @@ async function deleteWorkflow() {
   try {
     await workflowApi.remove(id)
     localStorage.removeItem(LS_PREFIX + id)
+    localStorage.removeItem(LS_PREFIX + 'last_open')
     store.addLog('🗑 已删除工作流：' + id)
     store.currentWorkflowId = ''
     store.workflowName = ''
@@ -1099,9 +1384,15 @@ async function run() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   refreshSavedList()
   window.addEventListener('keydown', onKeydown)
+  // 恢复上次打开的工作流：刷新页面后画布与配置原样回来
+  const lastId = localStorage.getItem(LS_PREFIX + 'last_open')
+  if (lastId) {
+    store.currentWorkflowId = lastId
+    await load(lastId)
+  }
 })
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
@@ -1523,6 +1814,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   background: #b8a8ff;
   cursor: wait;
 }
+.cfg-hint {
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+  line-height: 1.5;
+}
 .cfg-select-model {
   margin-top: 0;
 }
@@ -1669,4 +1966,67 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .sc-high { background: #e6f7e6; color: #389e38; }
 .sc-mid  { background: #fff3cd; color: #b8860b; }
 .sc-low  { background: #fcebeb; color: #c0392b; }
+
+/* ===== SD2.0 报告全文弹窗 ===== */
+.report-modal {
+  position: fixed;
+  left: 80px;
+  top: 60px;
+  width: 560px;
+  max-height: 85vh;
+  background: #fff;
+  border: 1px solid #e0e0ea;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  z-index: 2100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalIn 0.2s ease-out;
+}
+.report-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+  background: #fafafe;
+  border-radius: 14px 14px 0 0;
+}
+.report-header:active { cursor: grabbing; }
+.report-hd-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.report-title { font-size: 14px; font-weight: 600; color: #333; }
+.report-id { font-size: 10px; color: #bbb; font-family: monospace; }
+.report-author { font-size: 11px; color: #7b61ff; font-weight: 500; }
+.report-model { font-size: 10px; color: #10b981; background: #f0fdf6; padding: 0 6px; border-radius: 3px; line-height: 16px; }
+.report-close {
+  width: 28px; height: 28px;
+  border: none; background: #f0f0f5; border-radius: 6px;
+  cursor: pointer; font-size: 14px; color: #888;
+  display: flex; align-items: center; justify-content: center;
+}
+.report-close:hover { background: #e4e4ec; color: #555; }
+.report-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+.report-content {
+  margin: 0;
+  padding: 16px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fafafd;
+}
 </style>

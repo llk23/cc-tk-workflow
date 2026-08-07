@@ -5,6 +5,7 @@ import {
   ExecutionContext,
   NodeResult,
   WorkflowNode,
+  NodeTypeEnum,
 } from '@tk-workflow/types';
 import { randomUUID } from 'crypto';
 import { WorkflowGraph } from '../graph/workflow-graph';
@@ -116,19 +117,49 @@ export class PipelineEngine {
 
   /**
    * 收集节点的输入数据（从前序节点的输出中提取）
+   *
+   * 与 workflow.service.ts 的 executeUpstreamNodes 保持一致的契约：
+   * - 单上游：直接返回该节点的输出（平铺），下游用 inputObj.videos / inputObj.cookie 等读取
+   * - 多上游：将每个上游输出拆解后平铺合并到根，避免嵌套在 nodeId 下
    */
   private collectNodeInput(nodeId: string, context: ExecutionContext): unknown {
-    const input: Record<string, unknown> = {};
+    const upstreamOutputs: Record<string, unknown> = {};
     const edges = this.graph.getIncomingEdges(nodeId);
+    // 构建 节点id → 类型 映射（用于识别 model-config / skill-config 特殊包装）
+    const typeById = new Map<string, string>(
+      this.graph.getAllNodes().map((n) => [n.id, n.type]),
+    );
 
     for (const edge of edges) {
       const sourceResult = context.nodeResults[edge.source];
-      if (sourceResult?.output) {
-        input[edge.source] = sourceResult.output;
+      if (sourceResult?.output !== undefined) {
+        const srcType = typeById.get(edge.source);
+        if (srcType === NodeTypeEnum.MODEL_CONFIG) {
+          upstreamOutputs.modelConfig = sourceResult.output;
+        } else if (srcType === NodeTypeEnum.SKILL_CONFIG) {
+          upstreamOutputs.skill = sourceResult.output;
+        } else {
+          upstreamOutputs[edge.source] = sourceResult.output;
+        }
       }
     }
 
-    return input;
+    const keys = Object.keys(upstreamOutputs);
+    if (keys.length === 0) return undefined;
+    if (keys.length === 1) return upstreamOutputs[keys[0]];
+
+    // 多上游合并：modelConfig/skill 保留对象结构，其余拆解平铺到根
+    const merged: Record<string, unknown> = {};
+    for (const [key, output] of Object.entries(upstreamOutputs)) {
+      if (key === 'modelConfig' || key === 'skill') {
+        merged[key] = output;
+      } else if (output && typeof output === 'object' && !Array.isArray(output)) {
+        Object.assign(merged, output as Record<string, unknown>);
+      } else {
+        merged[key] = output;
+      }
+    }
+    return merged;
   }
 
   /**

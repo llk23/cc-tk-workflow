@@ -1,6 +1,38 @@
 import { BaseNode, NodeDefinition, NodeExecutionContext } from '../base/base-node';
 import { NodeConfig, NodeTypeEnum } from '@tk-workflow/types';
 import { chromium, type BrowserContext, type Page } from 'playwright';
+import * as fs from 'fs';
+import * as path from 'path';
+
+/** 清理 Chrome profile 残留锁文件（多节点串行启动同一目录时防止 launch 秒退） */
+function cleanChromeLocks(userDataDir: string): void {
+  try {
+    const lockNames = ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'DevToolsActivePort'];
+    for (const name of lockNames) {
+      const p = path.join(userDataDir, name);
+      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch {}
+    }
+  } catch { /* 忽略 */ }
+}
+
+/** 启动持久化浏览器上下文：先清锁，失败重试一次 */
+async function launchContext(userDataDir: string): Promise<BrowserContext> {
+  cleanChromeLocks(userDataDir);
+  const opts: any = {
+    channel: 'chrome',
+    headless: process.env.TK_HEADLESS !== 'false',
+    viewport: { width: 1280, height: 900 },
+    userAgent: UA,
+    args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+  };
+  try {
+    return await chromium.launchPersistentContext(userDataDir, opts);
+  } catch {
+    await new Promise((r) => setTimeout(r, 2000));
+    cleanChromeLocks(userDataDir);
+    return chromium.launchPersistentContext(userDataDir, opts);
+  }
+}
 
 /**
  * TK 账号验证节点（Cookie 校验 · Playwright 进程内浏览器版）
@@ -79,13 +111,7 @@ export class TikTokAccountVerifyNode extends BaseNode {
     try {
       ctx.onProgress(15);
       const userDataDir = process.env.PLAYWRIGHT_USER_DATA_DIR || '.cache/playwright-tk';
-      context = await chromium.launchPersistentContext(userDataDir, {
-        channel: 'chrome',
-        headless: process.env.TK_HEADLESS !== 'false',
-        viewport: { width: 1280, height: 900 },
-        userAgent: UA,
-        args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
-      });
+      context = await launchContext(userDataDir);
       page = await context.newPage();
       ctx.logger('✅ 浏览器已在进程内启动（本机 Chrome）');
 

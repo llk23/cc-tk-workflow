@@ -40,6 +40,14 @@
         @click.stop="toggleSeedanceHistory"
         :title="sdOpen ? '收起分析结果' : '查看分析结果'"
       >{{ sdOpen ? '▾' : '▸' }}</button>
+
+      <!-- ai-analyze-workbuddy-agent：结果展开按钮 -->
+      <button
+        v-if="data.nodeType === 'ai-analyze-workbuddy-agent'"
+        class="wf-history-btn"
+        @click.stop="toggleWorkbuddyHistory"
+        :title="wbOpen ? '收起分析结果' : '查看分析结果'"
+      >{{ wbOpen ? '▾' : '▸' }}</button>
     </div>
 
     <!-- fetch-tk：历史记录下拉区域 -->
@@ -136,37 +144,75 @@
       </template>
     </div>
 
-    <!-- ai-analyze-seedance：历史分析结果下拉面板（仅展示视频列表，暂无详情） -->
+    <!-- ai-analyze-seedance：历史分析结果下拉面板 -->
     <div v-if="sdOpen" class="wf-ai-drop" @click.stop>
       <div v-if="sdLoading" class="wh-loading">加载中…</div>
       <div v-else-if="sdRecords.length === 0" class="wh-empty">暂无历史分析记录</div>
       <template v-else>
         <div v-for="(rec, ri) in sdRecords" :key="ri">
-          <div class="ai-rec-hd" @click="rec._open = !rec._open">
+          <div class="ai-rec-hd" @click="toggleRecOpen(rec)">
             <span class="ai-rec-time">{{ rec.time }}</span>
             <span class="ai-rec-mode">SD2.0</span>
-            <span class="ai-rec-meta">{{ rec.total }} 个视频</span>
+            <span class="ai-rec-meta">{{ rec._needLoad ? '点击加载…' : rec.total + ' 个视频' }}</span>
             <span class="wh-arrow">{{ rec._open ? '▾' : '▸' }}</span>
           </div>
           <div v-if="rec._open" class="ai-rec-bd">
-            <div v-for="(a, ai) in rec.analyses" :key="ai" class="ai-vid-card" style="cursor:default">
+            <div v-if="rec._loading" class="wh-loading">加载完整记录中…</div>
+            <div v-else-if="rec._loadError" class="wh-empty">{{ rec._loadError }}</div>
+            <div v-for="(a, ai) in rec.analyses" :key="ai" class="ai-vid-card" @click="openSeedanceCard(a, rec, ai)">
               <div class="ai-vid-cover-wrap">
                 <div class="ai-vid-cover-fallback"><span class="ai-vid-fb-icon">▶</span></div>
                 <span class="ai-vid-dur" v-if="a.duration">{{ a.duration > 60 ? Math.floor(a.duration/60)+':'+String(a.duration%60).padStart(2,'0') : a.duration+'s' }}</span>
               </div>
               <div class="ai-vid-body">
                 <div class="ai-vid-top">
-                  <span class="ai-vid-score" :class="scoreClass(a.qualityScore)">{{ a.qualityScore }}</span>
-                  <span class="ai-vid-score" :class="scoreClass(a.hookRating)">钩{{ a.hookRating }}</span>
-                  <span class="ai-vid-label">{{ a.styleCategory?.split('|')[0] || 'other' }}</span>
+                  <span class="ai-vid-label">{{ a.styleCategory || 'SD2.0' }}</span>
                   <span class="ai-vid-stats">▶ {{ fmtNum(a.plays ?? 0) }} · ❤ {{ fmtNum(a.likes ?? 0) }}</span>
                 </div>
                 <div class="ai-vid-author" v-if="a.author">@{{ a.author }}</div>
                 <div class="ai-vid-desc" v-if="a.description">{{ truncate(a.description, 60) }}</div>
-                <div class="ai-vid-footer">
-                  <span v-for="(t, ti) in (a.generatedTags || []).slice(0, 3)" :key="ti" class="ai-vid-tag">{{ t }}</span>
+                <div class="ai-vid-footer" v-if="(a.hashtags || []).length">
+                  <span v-for="(t, ti) in (a.hashtags || []).slice(0, 3)" :key="ti" class="ai-vid-tag">#{{ t }}</span>
                 </div>
               </div>
+              <span class="ai-vid-enter">›</span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ai-analyze-workbuddy-agent：历史分析结果下拉面板（仅展示本节点分析结果） -->
+    <div v-if="wbOpen" class="wf-ai-drop" @click.stop>
+      <div v-if="wbLoading" class="wh-loading">加载中…</div>
+      <div v-else-if="wbRecords.length === 0" class="wh-empty">暂无历史分析记录</div>
+      <template v-else>
+        <div v-for="(rec, ri) in wbRecords" :key="ri">
+          <div class="ai-rec-hd" @click="toggleRecOpen(rec)">
+            <span class="ai-rec-time">{{ rec.time }}</span>
+            <span class="ai-rec-mode">WB-Agent</span>
+            <span class="ai-rec-meta">{{ rec._needLoad ? '点击加载…' : rec.total + ' 个视频' }}</span>
+            <span class="wh-arrow">{{ rec._open ? '▾' : '▸' }}</span>
+          </div>
+          <div v-if="rec._open" class="ai-rec-bd">
+            <div v-if="rec._loading" class="wh-loading">加载完整记录中…</div>
+            <div v-else-if="rec._loadError" class="wh-empty">{{ rec._loadError }}</div>
+            <div v-for="(a, ai) in rec.analyses" :key="ai" class="ai-vid-card" @click="openWorkbuddyReport(a, rec.analyses, ai)">
+              <div class="ai-vid-cover-wrap">
+                <div class="ai-vid-cover-fallback"><span class="ai-vid-fb-icon">▶</span></div>
+                <span class="ai-vid-dur" v-if="a.duration">{{ a.duration > 60 ? Math.floor(a.duration/60)+':'+String(a.duration%60).padStart(2,'0') : a.duration+'s' }}</span>
+              </div>
+              <div class="ai-vid-body">
+                <div class="ai-vid-top">
+                  <span class="ai-vid-label">{{ a.modelUsed ? '📦 ' + a.modelUsed : 'WB-Agent' }}</span>
+                  <span class="ai-vid-stats">▶ {{ fmtNum(a.plays ?? 0) }} · ❤ {{ fmtNum(a.likes ?? 0) }}</span>
+                </div>
+                <div class="ai-vid-author" v-if="a.author">@{{ a.author }}</div>
+                <div class="ai-vid-desc" v-if="a.description">{{ truncate(a.description, 60) }}</div>
+                <div class="ai-vid-tip" v-if="a.error">❌ {{ truncate(a.error, 50) }}</div>
+                <div class="ai-vid-tip" v-else-if="a.rawOutput">📄 分析报告 {{ a.rawOutput.length }} 字符</div>
+              </div>
+              <span class="ai-vid-enter">›</span>
             </div>
           </div>
         </div>
@@ -184,12 +230,17 @@ const props = defineProps<{ data: any; id: string }>()
 
 // 从父级注入的方法：打开视频详情抽屉
 const openAnalysisDetail = inject<(video: any, allAnalyses: any[], index: number) => void>('openAnalysisDetail', () => {})
+// 从父级注入的方法：打开 SD2.0 报告全文
+const openSeedanceReport = inject<(video: any, allAnalyses: any[], index: number) => void>('openSeedanceReport', () => {})
 
 const iconMap: Record<string, string> = {
   'fetch-tk-playwright': '🌐',
   'tk-account-verify': '🔐',
+  'model-config': '🤖',
+  'skill-config': '📚',
   'ai-analyze': '🧠',
   'ai-analyze-seedance': '🎯',
+  'ai-analyze-workbuddy-agent': '🤖',
   'video-generate': '🎬',
   transform: '🔄',
   condition: '🔀',
@@ -208,23 +259,194 @@ const sdRecords = ref<Array<{
   time: string
   mode: string
   total: number
+  wfId: string
+  execId: string
   analyses: Array<any>
   _open: boolean
 }>>([])
+
+// ===== ai-analyze-workbuddy-agent 历史分析记录 =====
+const wbOpen = ref(false)
+const wbLoading = ref(false)
+const wbRecords = ref<Array<{
+  time: string
+  mode: string
+  total: number
+  wfId: string
+  execId: string
+  analyses: Array<any>
+  _open: boolean
+}>>([])
+
+/** 打开报告全文：若 rawOutput 被截断则按需拉取单条完整记录 */
+async function openReportFull(wfId: string, execId: string, nodeId: string, video: any, allAnalyses: any[], index: number) {
+  const target = allAnalyses[index]
+  if (!target?._truncated || !wfId || !execId) {
+    openSeedanceReport(video, allAnalyses, index)
+    return
+  }
+  try {
+    const res = await axios.get(`/api/workflows/${wfId}/history/${execId}`, { timeout: 40000 })
+    const exec = res.data
+    const allResults = exec?.result as Record<string, any> | undefined
+    let full = allResults?.[nodeId]
+    if (!full?.analyses?.length) {
+      for (const v of Object.values(allResults || {})) {
+        const o = (v as any)
+        full = o?.data?.[nodeId] || o?.[nodeId]
+        if (full?.analyses?.length) break
+      }
+    }
+    const fullAnalyses = full?.analyses?.length ? full.analyses : allAnalyses
+    openSeedanceReport(fullAnalyses[index] || video, fullAnalyses, index)
+  } catch {
+    // 拉取失败降级用摘要打开
+    openSeedanceReport(video, allAnalyses, index)
+  }
+}
+
+async function toggleWorkbuddyHistory() {
+  wbOpen.value = !wbOpen.value
+  if (!wbOpen.value || wbRecords.value.length > 0) return
+  wbLoading.value = true
+  try {
+    const res = await axios.get('/api/workflows', { timeout: 10000 })
+    const workflows: Array<any> = Array.isArray(res.data) ? res.data : []
+    const wf = workflows.find((w: any) => (w.nodes || []).some((n: any) => n.id === props.id))
+    if (!wf) { wbLoading.value = false; return }
+    const histRes = await axios.get(`/api/workflows/${wf.id}/history?limit=20`, { timeout: 40000 })
+    const list: Array<any> = Array.isArray(histRes.data) ? histRes.data : []
+    for (const exec of list) {
+      if (exec.status !== 'completed') continue
+      // 巨型记录：result 未随列表返回，先占位，展开批次时按需加载完整记录
+      if (exec._truncatedRecord) {
+        wbRecords.value.push({
+          time: formatTime(exec.startedAt),
+          mode: 'WB-Agent',
+          total: 0,
+          wfId: wf.id,
+          execId: exec.id,
+          analyses: [],
+          _needLoad: true,
+          _open: false,
+        })
+        continue
+      }
+      const allResults = exec.result as Record<string, any> | undefined
+      if (!allResults) continue
+      let output = allResults[props.id]
+      if (!output?.analyses?.length) {
+        for (const v of Object.values(allResults)) {
+          const o = (v as any)
+          output = o?.data?.[props.id] || o?.[props.id]
+          if (output?.analyses?.length) break
+        }
+      }
+      if (!output?.analyses?.length) continue
+      wbRecords.value.push({
+        time: formatTime(exec.startedAt),
+        mode: 'WB-Agent',
+        total: output.total || output.analyses.length,
+        wfId: wf.id,
+        execId: exec.id,
+        analyses: output.analyses.map((a: any) => ({
+          videoId: a.videoId || '',
+          rawOutput: a.rawOutput || '',
+          rawOutputLength: a.rawOutputLength || (a.rawOutput || '').length,
+          _truncated: !!a._truncated,
+          error: a.error || '',
+          modelUsed: a.modelUsed || output.modelUsed || '',
+          author: a.author || '',
+          description: a.description || '',
+          plays: a.plays ?? 0,
+          likes: a.likes ?? 0,
+          duration: a.duration ?? 0,
+        })),
+        _open: false,
+      })
+    }
+    wbRecords.value = wbRecords.value.slice(0, 20)
+  } catch { /* ignore */ }
+  wbLoading.value = false
+}
+
+/** 展开/收起批次；巨型记录占位时按需加载完整 analyses */
+async function toggleRecOpen(rec: any) {
+  rec._open = !rec._open
+  if (!rec._open || !rec._needLoad || rec._loading) return
+  rec._loading = true
+  rec._loadError = ''
+  try {
+    const res = await axios.get(`/api/workflows/${rec.wfId}/history/${rec.execId}`, { timeout: 40000 })
+    const exec = res.data
+    const allResults = exec?.result as Record<string, any> | undefined
+    let output = allResults?.[props.id]
+    if (!output?.analyses?.length) {
+      for (const v of Object.values(allResults || {})) {
+        const o = (v as any)
+        output = o?.data?.[props.id] || o?.[props.id]
+        if (output?.analyses?.length) break
+      }
+    }
+    if (output?.analyses?.length) {
+      rec.total = output.total || output.analyses.length
+      rec.analyses = output.analyses.map((a: any) => ({
+        videoId: a.videoId || '',
+        rawOutput: a.rawOutput || '',
+        error: a.error || '',
+        modelUsed: a.modelUsed || output.modelUsed || '',
+        author: a.author || '',
+        description: a.description || '',
+        plays: a.plays ?? 0,
+        likes: a.likes ?? 0,
+        duration: a.duration ?? 0,
+      }))
+      rec._needLoad = false
+    } else {
+      rec._loadError = '该批次没有此节点的分析结果'
+    }
+  } catch (e: any) {
+    rec._loadError = '加载失败：' + (e?.message || e)
+  }
+  rec._loading = false
+}
+
+function openWorkbuddyReport(video: any, allAnalyses: any[], index: number) {
+  const rec = wbRecords.value.find((r) => r.analyses === allAnalyses)
+  openReportFull(rec?.wfId || '', rec?.execId || '', props.id, video, allAnalyses, index)
+}
+
+function openSeedanceCard(a: any, rec: any, index: number) {
+  openReportFull(rec.wfId || '', rec.execId || '', props.id, a, rec.analyses, index)
+}
 
 async function toggleSeedanceHistory() {
   sdOpen.value = !sdOpen.value
   if (!sdOpen.value || sdRecords.value.length > 0) return
   sdLoading.value = true
   try {
-    const res = await axios.get('/api/workflows', { timeout: 5000 })
+    const res = await axios.get('/api/workflows', { timeout: 10000 })
     const workflows: Array<any> = Array.isArray(res.data) ? res.data : []
     const wf = workflows.find((w: any) => (w.nodes || []).some((n: any) => n.id === props.id))
     if (!wf) { sdLoading.value = false; return }
-    const histRes = await axios.get(`/api/workflows/${wf.id}/history`, { timeout: 8000 })
+    const histRes = await axios.get(`/api/workflows/${wf.id}/history?limit=20`, { timeout: 40000 })
     const list: Array<any> = Array.isArray(histRes.data) ? histRes.data : []
     for (const exec of list) {
       if (exec.status !== 'completed') continue
+      // 巨型记录：先占位，展开批次时按需加载
+      if (exec._truncatedRecord) {
+        sdRecords.value.push({
+          time: formatTime(exec.startedAt),
+          mode: 'SD2.0',
+          total: 0,
+          wfId: wf.id,
+          execId: exec.id,
+          analyses: [],
+          _needLoad: true,
+          _open: false,
+        })
+        continue
+      }
       const allResults = exec.result as Record<string, any> | undefined
       if (!allResults) continue
       let output = allResults[props.id]
@@ -240,20 +462,19 @@ async function toggleSeedanceHistory() {
         time: formatTime(exec.startedAt),
         mode: 'SD2.0',
         total: output.total || output.analyses.length,
+        wfId: wf.id,
+        execId: exec.id,
         analyses: output.analyses.map((a: any) => ({
           videoId: a.videoId || '',
-          qualityScore: a.qualityScore ?? 0,
-          hookRating: a.hookRating ?? 0,
-          styleCategory: a.styleCategory || 'other',
-          captionStructure: a.captionStructure,
-          targetAudience: a.targetAudience || [],
-          suggestions: a.suggestions || [],
-          generatedTags: a.generatedTags || [],
+          styleCategory: a.styleCategory || '',
           rawOutput: a.rawOutput || '',
+          rawOutputLength: a.rawOutputLength || (a.rawOutput || '').length,
+          _truncated: !!a._truncated,
           author: a.author || '',
           description: a.description || '',
           plays: a.plays ?? 0,
           likes: a.likes ?? 0,
+          hashtags: Array.isArray(a.hashtags) ? a.hashtags : [],
           duration: a.duration ?? 0,
         })),
         _open: false,
@@ -327,14 +548,14 @@ async function toggleAiHistory() {
   if (!aiOpen.value || aiRecords.value.length > 0) return
   aiLoading.value = true
   try {
-    const res = await axios.get('/api/workflows', { timeout: 5000 })
+    const res = await axios.get('/api/workflows', { timeout: 10000 })
     const workflows: Array<any> = Array.isArray(res.data) ? res.data : []
     const wf = workflows.find((w: any) =>
       (w.nodes || []).some((n: any) => n.id === props.id)
     )
     if (!wf) { aiLoading.value = false; return }
 
-    const histRes = await axios.get(`/api/workflows/${wf.id}/history`, { timeout: 8000 })
+    const histRes = await axios.get(`/api/workflows/${wf.id}/history`, { timeout: 40000 })
     const list: Array<any> = Array.isArray(histRes.data) ? histRes.data : []
 
     for (const exec of list) {
@@ -410,14 +631,14 @@ async function toggleHistory() {
   if (!historyOpen.value || records.value.length > 0) return
   loading.value = true
   try {
-    const res = await axios.get('/api/workflows', { timeout: 5000 })
+    const res = await axios.get('/api/workflows', { timeout: 10000 })
     const workflows: Array<any> = Array.isArray(res.data) ? res.data : []
     const wf = workflows.find((w: any) =>
       (w.nodes || []).some((n: any) => n.id === props.id)
     )
     if (!wf) { loading.value = false; return }
 
-    const histRes = await axios.get(`/api/workflows/${wf.id}/history`, { timeout: 8000 })
+    const histRes = await axios.get(`/api/workflows/${wf.id}/history`, { timeout: 40000 })
     const list: Array<any> = Array.isArray(histRes.data) ? histRes.data : []
     const result: typeof records.value = []
 
@@ -521,8 +742,11 @@ function formatTime(iso: string): string {
 /* 类型色彩编码 */
 .wf-type-fetch-tk-playwright { border-left: 3px solid #4a90d9; }
 .wf-type-tk-account-verify { border-left: 3px solid #4a90d9; }
+.wf-type-model-config { border-left: 3px solid #4a90d9; }
+.wf-type-skill-config { border-left: 3px solid #8e44ad; }
 .wf-type-ai-analyze { border-left: 3px solid #7b61ff; }
 .wf-type-ai-analyze-seedance { border-left: 3px solid #f59e0b; }
+.wf-type-ai-analyze-workbuddy-agent { border-left: 3px solid #10b981; }
 .wf-type-video-generate { border-left: 3px solid #7b61ff; }
 .wf-type-transform { border-left: 3px solid #e8a838; }
 .wf-type-condition { border-left: 3px solid #e8a838; }
@@ -945,6 +1169,18 @@ function formatTime(iso: string): string {
   padding: 0 5px;
   border-radius: 3px;
   line-height: 16px;
+}
+.ai-vid-tip {
+  font-size: 10px;
+  color: #10b981;
+  background: #f0fdf6;
+  padding: 1px 6px;
+  border-radius: 3px;
+  line-height: 18px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ai-vid-link {
   font-size: 13px;

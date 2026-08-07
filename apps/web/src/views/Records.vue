@@ -176,12 +176,26 @@ function pretty(o: unknown): string {
   try { return JSON.stringify(o, null, 2) } catch { return String(o) }
 }
 
-/** 模型返回的原始内容：JSON 就格式化，自然语言就原文展示 */
+/** 模型返回的原始内容：CLI JSON 消息流提取最终 result；普通 JSON 格式化；自然语言原文展示 */
 function renderRaw(raw?: string): string {
   if (!raw) return '（无分析结果）'
   const trimmed = raw.trim()
-  // 若是 JSON 文本则格式化
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+  // WorkBuddy Agent：rawOutput 是 CLI JSON 消息数组，提取最后一条 type=result 的 result
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed)
+      if (Array.isArray(arr)) {
+        const results = arr.filter((m: any) => m?.type === 'result' && m?.result)
+        if (results.length) return String(results[results.length - 1].result)
+        const texts = arr.filter((m: any) => m?.type === 'text' && m?.text)
+        if (texts.length) return String(texts[texts.length - 1].text)
+      }
+    } catch { /* 截断/损坏，走下方截断展示 */ }
+    // 解析失败（可能是列表接口截断的片段）：只展示前 2000 字符，避免巨型乱码
+    return raw.slice(0, 2000) + (raw.length > 2000 ? '\n…（内容过长已截断）' : '')
+  }
+  // 普通 JSON 则格式化
+  if (trimmed.startsWith('{')) {
     try {
       return JSON.stringify(JSON.parse(trimmed), null, 2)
     } catch {

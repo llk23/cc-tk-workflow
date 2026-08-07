@@ -122,14 +122,13 @@ export class SeedanceAnalyzeNode extends BaseNode {
           duration: video.duration ?? 0,
           coverUrl: video.coverUrl || '',
           isCommerce: !!video.isCommerce,
+          hashtags: Array.isArray(video.hashtags) ? video.hashtags : [],
         });
       } catch (e: any) {
         ctx.logger(`⚠️ ${video.id} 失败：${e.message}`);
         analyses.push({
           videoId: video.id,
-          styleCategory: '',
-          suggestions: ['失败: ' + e.message],
-          generatedTags: [],
+          rawOutput: '',
           analyzedAt: new Date().toISOString(),
           error: e.message,
         } as any);
@@ -250,23 +249,8 @@ ${customPrompt ? `\n## 额外要求\n${customPrompt}` : ''}
     ctx.logger(`  ✅ 分析完成`);
     ctx.logger(`  📄 报告长度: ${raw.length} 字符`);
 
-    /**
-     * ════════════════════════════════════════════════════════════════
-     *  位置 B：整理 AI 返回的 JSON 映射到最终结果
-     * ════════════════════════════════════════════════════════════════
-     *
-     *  如果位置 A 加了新字段，这里也要对应加上解析逻辑。
-     *  格式：字段名: parsed.xxx?.yyy || '默认值',
-     *
-     *  当前映射表（可以在这里加/删字段）：
-     */
     return {
       videoId,
-      styleCategory: '',
-      captionStructure: '',
-      targetAudience: [],
-      suggestions: [],
-      generatedTags: [],
       rawOutput: raw,
       analyzedAt: new Date().toISOString(),
       modelUsed: model,
